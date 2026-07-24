@@ -9,10 +9,12 @@ Model-agnostic: nothing here names a class or a task. Class lists come from
 each model's metadata and are rendered as-is.
 """
 
+import io
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse
+import qrcode
+from fastapi import APIRouter, Depends, File, Form, Header, Request, UploadFile
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app import auth, db, routes
@@ -43,10 +45,40 @@ class _Redirect(Exception):
 # --------------------------------------------------------------------- login --
 
 @router.get("/ui/login", response_class=HTMLResponse)
-def login_page(request: Request):
+def login_page(request: Request, t: str | None = None):
+    # Scanned a QR: swap the one-time token for the session cookie.
+    if t:
+        key = auth.consume_login_token(t)
+        if key and auth.admin_from_cookie(key):
+            resp = RedirectResponse("/ui", status_code=303)
+            resp.set_cookie(auth.COOKIE_NAME, key, httponly=True,
+                            samesite="lax", max_age=30 * 86400)
+            return resp
+        return templates.TemplateResponse(
+            request, "login.html",
+            {"error": "That login link expired or was already used. Reprint the QR."},
+            status_code=401,
+        )
     if current_admin(request):
         return RedirectResponse("/ui", status_code=303)
     return templates.TemplateResponse(request, "login.html", {"error": None})
+
+
+@router.get("/ui/login-qr", response_class=PlainTextResponse)
+def login_qr(base: str, x_api_key: str = Header(...),
+             _: dict = Depends(auth.require_admin)):
+    """Mint a one-time login link and render it as a terminal QR. Called by the
+    setup script's access panel with an admin key; `base` is the reachable
+    origin (e.g. http://100.x:8000) since the gateway can't know its own
+    Tailscale address."""
+    token = auth.mint_login_token(x_api_key)
+    url = f"{base.rstrip('/')}/ui/login?t={token}"
+    qr = qrcode.QRCode(border=1)
+    qr.add_data(url)
+    qr.make(fit=True)
+    buf = io.StringIO()
+    qr.print_ascii(out=buf)
+    return f"{buf.getvalue()}\nScan to log in (one use, {auth.LOGIN_TOKEN_TTL // 60} min):\n{url}\n"
 
 
 @router.post("/ui/login")

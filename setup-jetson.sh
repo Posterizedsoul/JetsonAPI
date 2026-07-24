@@ -702,6 +702,18 @@ print_access() {
         "$BOLD$BLUE" "$RESET" "$SCRIPT_DIR"
     printf '%s│%s  Restart        : sudo %s deploy\n' "$BOLD$BLUE" "$RESET" "$0"
     printf '%s└─────────────────────────────────────────────────────%s\n' "$BOLD$BLUE" "$RESET"
+
+    # Scan-to-log-in QR: no typing the key on a borrowed machine. Needs the
+    # gateway up, an admin key, and a reachable address (Tailscale, else LAN).
+    local origin="${ts:+http://$ts:8000}"; origin="${origin:-${lan:+http://$lan:8000}}"
+    if [[ $health == ok && -n $key && -n $origin ]]; then
+        local qr
+        qr=$(curl -fsS --max-time 5 -H "X-API-Key: $key" \
+             "http://localhost:8000/ui/login-qr?base=$origin" 2>/dev/null || true)
+        if [[ -n $qr ]]; then
+            printf '\n%sScan to log in — no typing:%s\n%s\n' "$BOLD$GREEN" "$RESET" "$qr"
+        fi
+    fi
 }
 
 # -------------------------------------------------------------------- verify --

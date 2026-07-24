@@ -8,6 +8,7 @@ uploads to another device.
 
 import hashlib
 import secrets
+import time
 
 from fastapi import Depends, Header, HTTPException
 
@@ -19,8 +20,14 @@ def hash_key(token: str) -> str:
 
 
 def new_key() -> tuple[str, str]:
-    """(plaintext, hash). Show the plaintext once."""
-    token = secrets.token_urlsafe(32)
+    """(plaintext, hash). Show the plaintext once.
+
+    16 chars, not 43: the box is only reachable over Tailscale, so ~96 bits is
+    plenty and short enough to type on a borrowed machine. token_urlsafe(12)
+    avoids +/ so it's terminal- and copy-friendly.
+    ponytail: raise the byte count if this box is ever exposed beyond a tailnet.
+    """
+    token = secrets.token_urlsafe(12)
     return token, hash_key(token)
 
 
@@ -74,3 +81,34 @@ def admin_from_cookie(token: str | None) -> dict | None:
         (hash_key(token),),
     )
     return rows[0] if rows else None
+
+
+# --- one-time QR login tokens ---------------------------------------------
+# So you can scan a QR on your phone instead of typing the admin key. A token
+# carries the admin key's plaintext (handed in by the minting request, which
+# already authenticated with it) for at most 5 minutes and a single use; the
+# GET /ui/login?t= handler swaps it for the normal session cookie. The
+# permanent key never travels in a URL, only this throwaway token does.
+# ponytail: in-memory, single-gateway-process; a token dies on restart, which
+# is fine — just reprint the QR from the access panel.
+LOGIN_TOKEN_TTL = 300
+_login_tokens: dict[str, tuple[str, float]] = {}
+
+
+def mint_login_token(admin_key: str) -> str:
+    now = time.time()
+    # Opportunistic cleanup so the dict can't grow unbounded.
+    for t, (_, exp) in list(_login_tokens.items()):
+        if exp < now:
+            _login_tokens.pop(t, None)
+    token = secrets.token_urlsafe(9)
+    _login_tokens[token] = (admin_key, now + LOGIN_TOKEN_TTL)
+    return token
+
+
+def consume_login_token(token: str) -> str | None:
+    rec = _login_tokens.pop(token, None)
+    if not rec:
+        return None
+    key, exp = rec
+    return key if time.time() <= exp else None
