@@ -1,0 +1,70 @@
+# Jetson Orin Nano inference server.
+#
+# Nothing is published beyond 127.0.0.1 except the gateway, which binds
+# 0.0.0.0 so it is reachable over the Tailscale interface. Do not forward
+# ports on the router; Tailscale is the only remote path in.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-gibson}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gibson}
+      POSTGRES_DB: ${POSTGRES_DB:-gibson}
+    volumes:
+      # NVMe-backed path on the Jetson; see SETUP.md.
+      - ${DATA_ROOT:-./data}/postgres:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gibson}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      # First boot runs initdb, which is slow on a bind mount.
+      start_period: 60s
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    volumes:
+      - ${DATA_ROOT:-./data}/minio:/data
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  gateway:
+    build:
+      context: ./gateway
+      args:
+        BASE_IMAGE: ${GATEWAY_BASE_IMAGE:-python:3.12-slim}
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-gibson}:${POSTGRES_PASSWORD:-gibson}@postgres:5432/${POSTGRES_DB:-gibson}
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      S3_BUCKET: ${S3_BUCKET:-boards}
+      MODEL_DIR: /models
+      DEVICE: ${DEVICE:-}
+    volumes:
+      - ${DATA_ROOT:-./data}/models:/models
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    # Jetson: the NVIDIA container runtime provides the GPU. Harmless on x86
+    # CPU-only hosts only if the runtime exists, so it is opt-in via profile.
+    runtime: ${DOCKER_RUNTIME:-runc}
+    restart: unless-stopped

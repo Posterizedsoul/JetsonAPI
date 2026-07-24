@@ -1,0 +1,3 @@
+# These run on Linux/Jetson — CRLF breaks the shebang and here-docs.
+*.sh text eol=lf
+Dockerfile text eol=lf

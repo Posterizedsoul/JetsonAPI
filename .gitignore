@@ -1,0 +1,6 @@
+data/
+.smoke-tmp/
+.env
+__pycache__/
+*.pyc
+*.ts.pt
