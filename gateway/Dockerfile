@@ -18,9 +18,11 @@ RUN pip install --no-cache-dir --upgrade pip \
         -r requirements.txt
 
 # torch is not in requirements.txt because the L4T base image already ships a
-# CUDA-enabled build that must not be overwritten by a PyPI wheel. If the base
-# has no torch (the x86 python:slim dev image), fall back to a PyPI build.
-RUN python -c "import torch" 2>/dev/null \
+# CUDA-enabled build that must not be overwritten by a PyPI wheel. Use python3,
+# NOT python: the dustynv/L4T base has no `python` symlink, so `python` here
+# silently fell through and installed CPU torch over the CUDA build. If the
+# base genuinely has no torch (the x86 python:slim dev image), fall back to PyPI.
+RUN python3 -c "import torch; print('base torch', torch.__version__)" \
     || pip install --no-cache-dir --index-url https://pypi.org/simple torch
 
 COPY app ./app

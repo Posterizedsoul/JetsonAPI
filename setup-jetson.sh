@@ -600,7 +600,7 @@ EOF"
     if [[ $DRY_RUN != 1 ]]; then
         local cuda
         cuda=$(docker compose -f "$SCRIPT_DIR/docker-compose.yml" exec -T gateway \
-               python -c "import torch;print(torch.cuda.is_available())" 2>/dev/null | tr -d '\r\n' || echo "?")
+               python3 -c "import torch;print(torch.cuda.is_available())" 2>/dev/null | tr -d '\r\n' || echo "?")
         if [[ $cuda == "True" ]]; then
             ok "CUDA available inside the gateway container"
         else
@@ -618,7 +618,7 @@ EOF"
     else
         local out
         out=$(docker compose -f "$SCRIPT_DIR/docker-compose.yml" exec -T gateway \
-              python /app/scripts/create_key.py admin bootstrap 2>/dev/null || true)
+              python3 /app/scripts/create_key.py admin bootstrap 2>/dev/null || true)
         local key
         key=$(grep -oP 'key:\s*\K\S+' <<<"$out" || true)
         if [[ -n $key ]]; then
@@ -627,7 +627,7 @@ EOF"
             ok "admin API key created and saved to $marker"
         else
             warn "could not create the admin key automatically"
-            info "run: docker compose exec gateway python /app/scripts/create_key.py admin bootstrap"
+            info "run: docker compose exec gateway python3 /app/scripts/create_key.py admin bootstrap"
         fi
     fi
 }

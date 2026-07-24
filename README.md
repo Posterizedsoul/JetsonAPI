@@ -68,9 +68,9 @@ cp .env.example .env                 # defaults are CPU/x86 already
 docker compose up -d --build
 curl localhost:8000/health
 
-docker compose exec gateway python /app/scripts/make_seed_models.py --out /models
-docker compose exec gateway python /app/scripts/create_key.py admin laptop
-docker compose exec gateway python /app/scripts/create_key.py ingest phone-01 --device phone-01
+docker compose exec gateway python3 /app/scripts/make_seed_models.py --out /models
+docker compose exec gateway python3 /app/scripts/create_key.py admin laptop
+docker compose exec gateway python3 /app/scripts/create_key.py ingest phone-01 --device phone-01
 
 ADMIN_KEY=... INGEST_KEY=... bash scripts/smoke.sh
 ```
@@ -250,7 +250,7 @@ and the gateway starts.
 `deploy` checks this and warns. To confirm:
 
 ```bash
-docker compose exec gateway python -c "import torch; print(torch.cuda.is_available())"
+docker compose exec gateway python3 -c "import torch; print(torch.cuda.is_available())"
 ```
 
 `False` means one of:
@@ -297,7 +297,7 @@ The archive's `metadata.json` is missing, malformed, or missing a required key.
 The message names the problem. Check what's actually embedded:
 
 ```bash
-docker compose exec gateway python -c "
+docker compose exec gateway python3 -c "
 import torch, json
 e = {'metadata.json': ''}
 torch.jit.load('/models/your.ts.pt', map_location='cpu', _extra_files=e)
@@ -310,7 +310,7 @@ print(e['metadata.json'])"
 an admin key. Keys are stored hashed and cannot be recovered — mint a new one:
 
 ```bash
-docker compose exec gateway python /app/scripts/create_key.py admin laptop
+docker compose exec gateway python3 /app/scripts/create_key.py admin laptop
 ```
 
 ### Uploads succeed but no server prediction appears
@@ -371,7 +371,7 @@ or use repo-relative paths — `scripts/smoke.sh` does the latter.
 them:
 
 ```bash
-docker compose exec gateway python /app/scripts/make_seed_models.py --out /models
+docker compose exec gateway python3 /app/scripts/make_seed_models.py --out /models
 ```
 
 ---
@@ -379,7 +379,7 @@ docker compose exec gateway python /app/scripts/make_seed_models.py --out /model
 ## Tests
 
 ```bash
-docker compose exec gateway python -m pytest tests/ -q     # 17 tests
+docker compose exec gateway python3 -m pytest tests/ -q     # 17 tests
 bash scripts/smoke.sh                                      # end to end
 bash scripts/test-setup-dryrun.sh                          # setup script flow
 ```
