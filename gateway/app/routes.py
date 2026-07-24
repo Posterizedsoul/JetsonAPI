@@ -30,18 +30,12 @@ def _log_error(kind: str, detail: str, context: dict | None = None) -> None:
 
 # ------------------------------------------------------------------- models --
 
-@router.post("/models")
-async def register_model(
-    archive: UploadFile = File(...),
-    model_id: str = Form(...),
-    version: str = Form(...),
-    activate: bool = Form(False),
-    _: dict = Depends(auth.require_admin),
-) -> dict:
+def save_and_register(data: bytes, model_id: str, version: str,
+                      activate: bool) -> dict:
     """Register a TorchScript archive. The embedded metadata.json IS the
     manifest — task, classes, input size and preprocessing all come from it.
-    Adding a model is this call plus nothing else."""
-    data = await archive.read()
+    Adding a model is this call plus nothing else. Shared by the JSON API and
+    the web UI so the two can never drift."""
     dest = Path(config.MODEL_DIR) / f"{model_id}__{version}.ts.pt"
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(data)
@@ -61,6 +55,7 @@ async def register_model(
              json.dumps(meta), json.dumps(meta["classes"])),
         )
     except Exception as exc:
+        dest.unlink(missing_ok=True)
         if "unique" in str(exc).lower():
             raise HTTPException(409, f"{model_id}:{version} already registered") from exc
         raise
@@ -72,6 +67,17 @@ async def register_model(
         "task": meta["task"], "classes": meta["classes"],
         "val_metrics": meta.get("val_metrics", {}), "active": activate,
     }
+
+
+@router.post("/models")
+async def register_model(
+    archive: UploadFile = File(...),
+    model_id: str = Form(...),
+    version: str = Form(...),
+    activate: bool = Form(False),
+    _: dict = Depends(auth.require_admin),
+) -> dict:
+    return save_and_register(await archive.read(), model_id, version, activate)
 
 
 @router.get("/models")

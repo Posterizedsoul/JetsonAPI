@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Log in{% endblock %}
+{% block body %}
+<div class="max-w-sm mx-auto mt-16">
+  <h1 class="text-xl font-semibold mb-1">Jetson admin</h1>
+  <p class="text-sm text-slate-500 mb-6">Paste an admin API key to continue.</p>
+  {% if error %}
+  <div class="mb-4 text-sm text-red-700 bg-red-100 rounded px-3 py-2">{{ error }}</div>
+  {% endif %}
+  <form method="post" action="/ui/login" class="space-y-3">
+    <input type="password" name="api_key" autofocus required placeholder="admin key"
+           class="w-full rounded border border-slate-300 px-3 py-2 text-sm">
+    <button class="w-full rounded bg-slate-900 text-white py-2 text-sm font-medium hover:bg-slate-700">
+      Log in
+    </button>
+  </form>
+  <p class="text-xs text-slate-400 mt-6">
+    No key yet? On the box:<br>
+    <code class="text-slate-500">docker compose exec gateway python3 /app/scripts/create_key.py admin you</code>
+  </p>
+</div>
+{% endblock %}

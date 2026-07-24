@@ -53,3 +53,24 @@ def require_ingest(key: dict = Depends(require_key)) -> dict:
     if key["scope"] not in ("ingest", "admin"):
         raise HTTPException(403, "ingest key required")
     return key
+
+
+# --- web UI session -------------------------------------------------------
+# The admin UI can't send an X-API-Key header on a plain browser navigation, so
+# the login form stores the admin key in an httponly cookie and every page
+# re-verifies it against the hash table. No session table, no signing library:
+# the cookie holds the real key and is checked the same way a header is.
+# ponytail: raw key in an httponly cookie is fine on a single-user, Tailscale-
+# only box; add signed sessions if this ever faces more than one operator.
+COOKIE_NAME = "session_key"
+
+
+def admin_from_cookie(token: str | None) -> dict | None:
+    if not token:
+        return None
+    rows = db.query(
+        "SELECT id, name, scope, device_id FROM api_keys"
+        " WHERE key_hash = %s AND revoked_at IS NULL AND scope = 'admin'",
+        (hash_key(token),),
+    )
+    return rows[0] if rows else None

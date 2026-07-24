@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}API keys{% endblock %}
+{% block body %}
+<h1 class="text-lg font-semibold mb-4">API keys</h1>
+
+<div id="keys" class="mb-6">
+  {% include "_keys_table.html" %}
+</div>
+
+<section class="bg-white rounded-lg border border-slate-200 p-4">
+  <h2 class="text-sm font-semibold mb-3">Create a key</h2>
+  <p class="text-xs text-slate-500 mb-3">
+    Ingest keys are bound to a device — uploads are attributed to it, not to
+    whatever the client claims. Admin keys manage models and keys.
+  </p>
+  <form hx-post="/ui/keys/create" hx-target="#keys" hx-swap="innerHTML"
+        class="grid sm:grid-cols-3 gap-3"
+        hx-on::after-request="if(event.detail.successful) this.reset()">
+    <label class="text-sm">Name
+      <input name="name" required placeholder="phone-01"
+             class="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm">
+    </label>
+    <label class="text-sm">Scope
+      <select name="scope" class="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+              onchange="this.form.device_id.disabled = this.value==='admin'">
+        <option value="ingest">ingest</option>
+        <option value="admin">admin</option>
+      </select>
+    </label>
+    <label class="text-sm">Device id <span class="text-slate-400">(ingest only)</span>
+      <input name="device_id" placeholder="phone-01"
+             class="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm">
+    </label>
+    <div class="sm:col-span-3">
+      <button class="rounded bg-slate-900 text-white px-4 py-2 text-sm font-medium hover:bg-slate-700">
+        Create key
+      </button>
+    </div>
+  </form>
+</section>
+{% endblock %}

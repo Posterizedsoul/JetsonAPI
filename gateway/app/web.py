@@ -1,0 +1,238 @@
+"""Server-rendered admin UI. Jinja + HTMX, no build step, no SPA.
+
+Kept deliberately thin: every handler is a DB read or a call into the same
+helpers the JSON API uses (routes.save_and_register, routes._activate,
+runner.load/unload), then it renders a template. Business logic lives in
+routes.py / runner.py, not here.
+
+Model-agnostic: nothing here names a class or a task. Class lists come from
+each model's metadata and are rendered as-is.
+"""
+
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
+
+from app import auth, db, routes
+from app.runner import runner
+
+templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+router = APIRouter(include_in_schema=False)
+
+
+def current_admin(request: Request) -> dict | None:
+    return auth.admin_from_cookie(request.cookies.get(auth.COOKIE_NAME))
+
+
+def require_web_admin(request: Request) -> dict:
+    """Dependency for UI routes. Raises a redirect to the login page rather
+    than a 401, so an unauthenticated browser lands somewhere useful."""
+    admin = current_admin(request)
+    if not admin:
+        raise _Redirect("/ui/login")
+    return admin
+
+
+class _Redirect(Exception):
+    def __init__(self, url: str) -> None:
+        self.url = url
+
+
+# --------------------------------------------------------------------- login --
+
+@router.get("/ui/login", response_class=HTMLResponse)
+def login_page(request: Request):
+    if current_admin(request):
+        return RedirectResponse("/ui", status_code=303)
+    return templates.TemplateResponse(request, "login.html", {"error": None})
+
+
+@router.post("/ui/login")
+def login(request: Request, api_key: str = Form(...)):
+    if not auth.admin_from_cookie(api_key):
+        return templates.TemplateResponse(
+            request, "login.html",
+            {"error": "Not a valid admin key."}, status_code=401,
+        )
+    resp = RedirectResponse("/ui", status_code=303)
+    resp.set_cookie(
+        auth.COOKIE_NAME, api_key, httponly=True, samesite="lax", max_age=30 * 86400
+    )
+    return resp
+
+
+@router.get("/ui/logout")
+def logout():
+    resp = RedirectResponse("/ui/login", status_code=303)
+    resp.delete_cookie(auth.COOKIE_NAME)
+    return resp
+
+
+# ----------------------------------------------------------------- dashboard --
+
+@router.get("/", response_class=HTMLResponse)
+def root(request: Request):
+    return RedirectResponse("/ui", status_code=303)
+
+
+@router.get("/ui", response_class=HTMLResponse)
+def dashboard(request: Request, admin: dict = Depends(require_web_admin)):
+    counts = db.query(
+        "SELECT (SELECT count(*) FROM boards) AS boards,"
+        " (SELECT count(*) FROM views) AS views,"
+        " (SELECT count(*) FROM predictions WHERE source='server') AS server_preds,"
+        " (SELECT count(*) FROM devices) AS devices,"
+        " (SELECT count(*) FROM api_keys WHERE revoked_at IS NULL) AS keys"
+    )[0]
+    active = db.query(
+        "SELECT model_id, version, task, classes FROM models WHERE active"
+        " ORDER BY task"
+    )
+    errors = db.query(
+        "SELECT kind, detail, created_at FROM errors ORDER BY created_at DESC LIMIT 8"
+    )
+    loaded = next(
+        (m for m in db.query("SELECT model_id, version FROM models m"
+                             " WHERE %s = m.id::text",
+                             (runner.model_uuid or "",))), None
+    ) if runner.model_uuid else None
+    return templates.TemplateResponse(request, "dashboard.html", {
+        "admin": admin, "counts": counts, "active": active,
+        "errors": errors, "loaded": loaded, "device": runner.device,
+        "nav": "dashboard",
+    })
+
+
+# -------------------------------------------------------------------- models --
+
+def _models_rows() -> list[dict]:
+    rows = db.query(
+        "SELECT id, model_id, version, task, classes, active, registered_at,"
+        " meta->'val_metrics' AS val_metrics, meta->>'variant' AS variant"
+        " FROM models ORDER BY task, registered_at DESC"
+    )
+    for r in rows:
+        r["id"] = str(r["id"])
+        r["loaded"] = runner.is_loaded(r["id"])
+    return rows
+
+
+@router.get("/ui/models", response_class=HTMLResponse)
+def models_page(request: Request, admin: dict = Depends(require_web_admin)):
+    return templates.TemplateResponse(request, "models.html", {
+        "admin": admin, "models": _models_rows(), "nav": "models",
+        "notice": None, "notice_kind": "ok",
+    })
+
+
+def _models_fragment(request: Request, notice=None, kind="ok"):
+    return templates.TemplateResponse(request, "_models_table.html", {
+        "models": _models_rows(), "notice": notice, "notice_kind": kind,
+    })
+
+
+@router.post("/ui/models/register", response_class=HTMLResponse)
+async def ui_register(
+    request: Request, admin: dict = Depends(require_web_admin),
+    archive: UploadFile = File(...), model_id: str = Form(...),
+    version: str = Form(...), activate: bool = Form(False),
+):
+    try:
+        info = routes.save_and_register(
+            await archive.read(), model_id.strip(), version.strip(), activate
+        )
+        note = f"Registered {info['model_id']}:{info['version']} " \
+               f"({info['task']}, {len(info['classes'])} classes)."
+        return _models_fragment(request, note, "ok")
+    except Exception as exc:
+        detail = getattr(exc, "detail", str(exc))
+        return _models_fragment(request, f"Rejected: {detail}", "err")
+
+
+@router.post("/ui/models/{model_uuid}/{action}", response_class=HTMLResponse)
+def ui_model_action(
+    request: Request, model_uuid: str, action: str,
+    admin: dict = Depends(require_web_admin),
+):
+    try:
+        if action == "activate":
+            routes._activate(model_uuid)
+            note = "Activated."
+        elif action == "load":
+            row = db.query("SELECT archive_key FROM models WHERE id=%s", (model_uuid,))
+            if not row:
+                return _models_fragment(request, "No such model.", "err")
+            runner.load(row[0]["archive_key"], model_uuid)
+            note = "Loaded into memory."
+        elif action == "unload":
+            if runner.is_loaded(model_uuid):
+                runner.unload()
+            note = "Unloaded."
+        else:
+            return _models_fragment(request, f"Unknown action {action}.", "err")
+        return _models_fragment(request, note, "ok")
+    except Exception as exc:
+        return _models_fragment(request, f"Failed: {exc}", "err")
+
+
+# ---------------------------------------------------------------------- keys --
+
+def _keys_rows() -> list[dict]:
+    return db.query(
+        "SELECT k.id, k.name, k.scope, k.device_id, k.created_at, k.last_used_at,"
+        " k.revoked_at FROM api_keys k ORDER BY k.revoked_at NULLS FIRST, k.created_at DESC"
+    )
+
+
+@router.get("/ui/keys", response_class=HTMLResponse)
+def keys_page(request: Request, admin: dict = Depends(require_web_admin)):
+    return templates.TemplateResponse(request, "keys.html", {
+        "admin": admin, "keys": _keys_rows(), "nav": "keys",
+        "new_key": None, "notice": None, "notice_kind": "ok",
+    })
+
+
+def _keys_fragment(request: Request, new_key=None, notice=None, kind="ok"):
+    return templates.TemplateResponse(request, "_keys_table.html", {
+        "keys": _keys_rows(), "new_key": new_key,
+        "notice": notice, "notice_kind": kind,
+    })
+
+
+@router.post("/ui/keys/create", response_class=HTMLResponse)
+def ui_create_key(
+    request: Request, admin: dict = Depends(require_web_admin),
+    name: str = Form(...), scope: str = Form(...), device_id: str = Form(""),
+):
+    scope = scope.strip()
+    device_id = device_id.strip() or None
+    if scope not in ("admin", "ingest"):
+        return _keys_fragment(request, None, "Scope must be admin or ingest.", "err")
+    if scope == "ingest" and not device_id:
+        return _keys_fragment(request, None, "Ingest keys need a device id.", "err")
+
+    if device_id:
+        db.execute(
+            "INSERT INTO devices (device_id) VALUES (%s) ON CONFLICT DO NOTHING",
+            (device_id,),
+        )
+    token, digest = auth.new_key()
+    db.execute(
+        "INSERT INTO api_keys (name, key_hash, scope, device_id) VALUES (%s,%s,%s,%s)",
+        (name.strip(), digest, scope, device_id),
+    )
+    # The plaintext is shown once, right here, and never stored.
+    return _keys_fragment(request, token, f"Created '{name.strip()}'. Copy it now.", "ok")
+
+
+@router.post("/ui/keys/{key_id}/revoke", response_class=HTMLResponse)
+def ui_revoke_key(
+    request: Request, key_id: int, admin: dict = Depends(require_web_admin),
+):
+    # A key cannot revoke itself out from under the session that's using it.
+    if str(key_id) == str(admin["id"]):
+        return _keys_fragment(request, None, "Can't revoke the key you're logged in with.", "err")
+    db.execute("UPDATE api_keys SET revoked_at = now() WHERE id = %s", (key_id,))
+    return _keys_fragment(request, None, "Revoked.", "ok")

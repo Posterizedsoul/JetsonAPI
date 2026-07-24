@@ -1,0 +1,49 @@
+{% if new_key %}
+<div class="mb-3 rounded bg-amber-50 border border-amber-200 px-3 py-2">
+  <div class="text-xs text-amber-800 mb-1">Copy this now — it is never shown again:</div>
+  <code class="text-sm break-all select-all font-mono text-slate-900">{{ new_key }}</code>
+</div>
+{% endif %}
+{% if notice %}
+<div class="mb-3 text-sm rounded px-3 py-2
+  {{ 'text-green-800 bg-green-100' if notice_kind=='ok' else 'text-red-800 bg-red-100' }}">
+  {{ notice }}
+</div>
+{% endif %}
+<div class="bg-white rounded-lg border border-slate-200 overflow-hidden">
+  <table class="w-full text-sm">
+    <thead class="bg-slate-50 text-left text-xs uppercase text-slate-500">
+      <tr>
+        <th class="px-3 py-2">Name</th>
+        <th class="px-3 py-2">Scope</th>
+        <th class="px-3 py-2">Device</th>
+        <th class="px-3 py-2">Last used</th>
+        <th class="px-3 py-2 text-right">Actions</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y">
+      {% for k in keys %}
+      <tr class="{{ 'opacity-40' if k.revoked_at }}">
+        <td class="px-3 py-2 font-medium">{{ k.name }}</td>
+        <td class="px-3 py-2">
+          <span class="text-xs rounded px-2 py-0.5
+            {{ 'bg-purple-100 text-purple-800' if k.scope=='admin' else 'bg-slate-100' }}">{{ k.scope }}</span>
+        </td>
+        <td class="px-3 py-2 text-xs text-slate-500">{{ k.device_id or "—" }}</td>
+        <td class="px-3 py-2 text-xs text-slate-500">
+          {{ k.last_used_at.strftime("%m-%d %H:%M") if k.last_used_at else "never" }}
+        </td>
+        <td class="px-3 py-2 text-right">
+          {% if k.revoked_at %}
+          <span class="text-xs text-slate-400">revoked</span>
+          {% else %}
+          <button class="text-xs rounded px-2 py-1 bg-red-50 text-red-700 hover:bg-red-100"
+                  hx-post="/ui/keys/{{ k.id }}/revoke" hx-target="#keys" hx-swap="innerHTML"
+                  hx-confirm="Revoke '{{ k.name }}'? Clients using it stop working.">Revoke</button>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

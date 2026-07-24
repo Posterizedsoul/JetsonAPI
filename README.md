@@ -27,10 +27,13 @@ Built and verified end to end:
 | Inference on ingest, edge + server predictions, agreement scoring | working |
 | Review read API — sort by ordinal error, margin, confidence | working |
 | Per-device API keys, sha256-hashed | working |
-| `setup-jetson.sh` | dry-run verified, **not** hardware-tested |
+| Admin UI — dashboard, model register/activate/load/unload, key create/revoke | working |
+| Running on the real Orin Nano, on GPU | working |
+| `setup-jetson.sh` | deploys on hardware; see notes |
 
-Not built yet: the web UI, replay, training-set export, verification write
-endpoint, devices/dashboard pages, per-model metrics, `API.md`, `SETUP.md`,
+Admin UI is at `/ui` (log in with an admin key). Not built yet: the review
+queue UI (image viewer + grading), replay, training-set export, verification
+write endpoint, devices/records pages, per-model accuracy, `API.md`, `SETUP.md`,
 `models/README.md`, and the benchmark script.
 
 ---

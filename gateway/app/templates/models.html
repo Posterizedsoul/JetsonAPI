@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Models{% endblock %}
+{% block body %}
+<div class="flex items-center justify-between mb-4">
+  <h1 class="text-lg font-semibold">Models</h1>
+</div>
+
+<div id="models" class="mb-6">
+  {% include "_models_table.html" %}
+</div>
+
+<section class="bg-white rounded-lg border border-slate-200 p-4">
+  <h2 class="text-sm font-semibold mb-3">Register an archive</h2>
+  <p class="text-xs text-slate-500 mb-3">
+    A TorchScript <code>.ts.pt</code> with an embedded <code>metadata.json</code>.
+    Task, classes, and preprocessing are read from it — nothing to configure here.
+  </p>
+  <form hx-post="/ui/models/register" hx-target="#models" hx-swap="innerHTML"
+        hx-encoding="multipart/form-data" class="grid sm:grid-cols-2 gap-3"
+        hx-on::after-request="if(event.detail.successful) this.reset()">
+    <label class="text-sm">Model id
+      <input name="model_id" required placeholder="gibsonnet"
+             class="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm">
+    </label>
+    <label class="text-sm">Version
+      <input name="version" required placeholder="medium-v3"
+             class="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm">
+    </label>
+    <label class="text-sm sm:col-span-2">Archive
+      <input type="file" name="archive" required accept=".pt,.ts,.ts.pt"
+             class="mt-1 w-full text-sm">
+    </label>
+    <label class="text-sm flex items-center gap-2">
+      <input type="checkbox" name="activate" value="true">
+      Activate for its task after registering
+    </label>
+    <div class="sm:col-span-2">
+      <button class="rounded bg-slate-900 text-white px-4 py-2 text-sm font-medium hover:bg-slate-700">
+        Register <span data-loading>…</span>
+      </button>
+    </div>
+  </form>
+</section>
+{% endblock %}

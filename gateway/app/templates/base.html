@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Admin{% endblock %} · Jetson</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@2.0.3"></script>
+  <style>
+    [data-loading] { display: none; }
+    .htmx-request [data-loading] { display: inline; }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen">
+{% if admin %}
+<nav class="bg-slate-900 text-slate-200">
+  <div class="max-w-5xl mx-auto px-4 flex items-center gap-1 h-12 text-sm">
+    <span class="font-semibold text-white mr-4">Jetson</span>
+    {% set item = "px-3 py-1.5 rounded hover:bg-slate-700" %}
+    {% set on = "px-3 py-1.5 rounded bg-slate-700 text-white" %}
+    <a href="/ui"        class="{{ on if nav=='dashboard' else item }}">Dashboard</a>
+    <a href="/ui/models" class="{{ on if nav=='models'    else item }}">Models</a>
+    <a href="/ui/keys"   class="{{ on if nav=='keys'      else item }}">API keys</a>
+    <a href="/docs"      class="{{ item }}">API docs</a>
+    <a href="/ui/logout" class="ml-auto {{ item }}">Log out</a>
+  </div>
+</nav>
+{% endif %}
+<main class="max-w-5xl mx-auto px-4 py-6">
+  {% block body %}{% endblock %}
+</main>
+</body>
+</html>

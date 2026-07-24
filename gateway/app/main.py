@@ -1,8 +1,9 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import RedirectResponse
 
-from app import db, routes, storage
+from app import db, routes, storage, web
 
 
 @asynccontextmanager
@@ -16,6 +17,14 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Jetson inference server", version="1", lifespan=lifespan)
 app.include_router(routes.router)
+app.include_router(web.router)
+
+
+# UI dependencies raise _Redirect instead of a 401 so an unauthenticated
+# browser is sent to the login page.
+@app.exception_handler(web._Redirect)
+def _redirect_handler(request: Request, exc: web._Redirect):
+    return RedirectResponse(exc.url, status_code=303)
 
 
 @app.get("/health")

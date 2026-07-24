@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block body %}
+<h1 class="text-lg font-semibold mb-4">Dashboard</h1>
+
+<div class="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
+  {% for label, value in [
+      ("Boards", counts.boards), ("Views", counts.views),
+      ("Server preds", counts.server_preds), ("Devices", counts.devices),
+      ("Active keys", counts.keys)] %}
+  <div class="bg-white rounded-lg border border-slate-200 px-4 py-3">
+    <div class="text-2xl font-semibold">{{ value }}</div>
+    <div class="text-xs text-slate-500">{{ label }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="grid md:grid-cols-2 gap-6">
+  <section>
+    <h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2">Active model per task</h2>
+    <div class="bg-white rounded-lg border border-slate-200 divide-y">
+      {% for m in active %}
+      <div class="px-4 py-3 text-sm">
+        <div class="flex justify-between">
+          <span class="font-medium">{{ m.model_id }}:{{ m.version }}</span>
+          <span class="text-xs bg-slate-100 rounded px-2 py-0.5">{{ m.task }}</span>
+        </div>
+        <div class="text-xs text-slate-500 mt-1">{{ m.classes | join(", ") }}</div>
+      </div>
+      {% else %}
+      <div class="px-4 py-3 text-sm text-slate-400">No active model. Register one under Models.</div>
+      {% endfor %}
+    </div>
+    <p class="text-xs text-slate-500 mt-2">
+      Resident in memory: {{ loaded.model_id ~ ":" ~ loaded.version if loaded else "none" }}
+      · device: {{ device }}
+    </p>
+  </section>
+
+  <section>
+    <h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2">Recent errors</h2>
+    <div class="bg-white rounded-lg border border-slate-200 divide-y">
+      {% for e in errors %}
+      <div class="px-4 py-2 text-sm">
+        <div class="flex justify-between gap-2">
+          <span class="font-mono text-xs text-red-700">{{ e.kind }}</span>
+          <span class="text-xs text-slate-400 whitespace-nowrap">{{ e.created_at.strftime("%m-%d %H:%M") }}</span>
+        </div>
+        <div class="text-xs text-slate-600 truncate">{{ e.detail }}</div>
+      </div>
+      {% else %}
+      <div class="px-4 py-3 text-sm text-slate-400">No errors logged.</div>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+{% endblock %}

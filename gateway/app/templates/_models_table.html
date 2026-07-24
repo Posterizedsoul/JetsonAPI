@@ -1,0 +1,52 @@
+{% if notice %}
+<div class="mb-3 text-sm rounded px-3 py-2
+  {{ 'text-green-800 bg-green-100' if notice_kind=='ok' else 'text-red-800 bg-red-100' }}">
+  {{ notice }}
+</div>
+{% endif %}
+<div class="bg-white rounded-lg border border-slate-200 overflow-hidden">
+  <table class="w-full text-sm">
+    <thead class="bg-slate-50 text-left text-xs uppercase text-slate-500">
+      <tr>
+        <th class="px-3 py-2">Model</th>
+        <th class="px-3 py-2">Task</th>
+        <th class="px-3 py-2">Classes</th>
+        <th class="px-3 py-2">State</th>
+        <th class="px-3 py-2 text-right">Actions</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y">
+      {% for m in models %}
+      <tr>
+        <td class="px-3 py-2">
+          <div class="font-medium">{{ m.model_id }}:{{ m.version }}</div>
+          {% if m.variant %}<div class="text-xs text-slate-400">{{ m.variant }}</div>{% endif %}
+        </td>
+        <td class="px-3 py-2"><span class="text-xs bg-slate-100 rounded px-2 py-0.5">{{ m.task }}</span></td>
+        <td class="px-3 py-2 text-xs text-slate-500">{{ m.classes | length }}: {{ m.classes | join(", ") }}</td>
+        <td class="px-3 py-2">
+          {% if m.active %}<span class="text-xs text-green-700 font-medium">active</span>{% endif %}
+          {% if m.loaded %}<span class="text-xs text-blue-700 font-medium">· loaded</span>{% endif %}
+          {% if not m.active and not m.loaded %}<span class="text-xs text-slate-400">idle</span>{% endif %}
+        </td>
+        <td class="px-3 py-2 text-right whitespace-nowrap">
+          {% set btn = "text-xs rounded px-2 py-1 hover:bg-slate-200 bg-slate-100" %}
+          {% if not m.active %}
+          <button class="{{ btn }}" hx-post="/ui/models/{{ m.id }}/activate"
+                  hx-target="#models" hx-swap="innerHTML">Activate</button>
+          {% endif %}
+          {% if m.loaded %}
+          <button class="{{ btn }}" hx-post="/ui/models/{{ m.id }}/unload"
+                  hx-target="#models" hx-swap="innerHTML">Unload</button>
+          {% else %}
+          <button class="{{ btn }}" hx-post="/ui/models/{{ m.id }}/load"
+                  hx-target="#models" hx-swap="innerHTML">Load</button>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="px-3 py-4 text-slate-400">No models registered yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
