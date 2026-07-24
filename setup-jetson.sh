@@ -636,9 +636,30 @@ EOF"
 
 # -------------------------------------------------------------------- access --
 
+# Bring Tailscale up if it isn't already, right before we show the panel — so
+# a fresh box "just starts": the login URL appears inline, you click it once,
+# and the panel then prints the real Tailscale address. Idempotent: a box
+# that's already connected skips straight through.
+ensure_tailscale() {
+    have tailscale || { warn "tailscale not installed — run: $0 tailscale"; return 0; }
+    systemctl start tailscaled 2>/dev/null || true
+    if tailscale status >/dev/null 2>&1; then
+        return 0
+    fi
+    printf '\n%s==> Connecting Tailscale (one-time login)%s\n' "$BOLD$BLUE" "$RESET"
+    info "A sign-in URL appears below. Open it on your phone or laptop, log in,"
+    info "and this finishes on its own. Press Ctrl-C to skip and do it later."
+    # Not wrapped in run(): the auth URL must reach the terminal, not the log.
+    # --hostname gives a friendly MagicDNS name (http://jetson:8000/ui).
+    tailscale up --hostname="$(hostname -s 2>/dev/null || echo jetson)" \
+        || warn "Tailscale not connected — finish later with: sudo tailscale up"
+}
+
 # Everything needed to actually use the box, in one block. Printed at the end
 # of deploy and re-runnable any time: `sudo ./setup-jetson.sh access`.
 print_access() {
+    ensure_tailscale
+
     # Every lookup ends in `|| true`: under `set -e` + pipefail a failing probe
     # (Tailscale down, gateway unreachable) would otherwise abort the whole
     # panel instead of just showing that one line as unavailable.
