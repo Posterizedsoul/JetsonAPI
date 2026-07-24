@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, File, Form, Header, Request, UploadFile
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from app import auth, db, routes
+from app import auth, db, metrics, routes
 from app.runner import runner
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -116,6 +116,25 @@ def logout():
 def help_page(request: Request, admin: dict = Depends(require_web_admin)):
     return templates.TemplateResponse(request, "help.html", {
         "admin": admin, "nav": "help",
+    })
+
+
+# ----------------------------------------------------------------- performance --
+
+@router.get("/ui/perf", response_class=HTMLResponse)
+def perf_page(request: Request, admin: dict = Depends(require_web_admin)):
+    # The page shell; the numbers live in a fragment that polls itself.
+    return templates.TemplateResponse(request, "perf.html", {
+        "admin": admin, "nav": "perf",
+    })
+
+
+@router.get("/ui/perf/data", response_class=HTMLResponse)
+def perf_data(request: Request, admin: dict = Depends(require_web_admin)):
+    return templates.TemplateResponse(request, "_perf.html", {
+        "sys": metrics.system(),
+        "models": metrics.model_performance(),
+        "tp": metrics.throughput(),
     })
 
 

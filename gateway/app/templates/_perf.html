@@ -1,0 +1,133 @@
+{# Live metrics fragment, polled by perf.html. #}
+{% macro bar(pct, warn=80, crit=92) %}
+  {% set color = 'bg-red-500' if pct >= crit else ('bg-amber-500' if pct >= warn else 'bg-emerald-500') %}
+  <div class="h-2 rounded bg-slate-200 overflow-hidden">
+    <div class="h-full {{ color }}" style="width: {{ pct if pct is not none else 0 }}%"></div>
+  </div>
+{% endmacro %}
+
+<div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+  {# CPU #}
+  <div class="bg-white rounded-lg border border-slate-200 p-4" title="Host CPU busy % across all cores.">
+    <div class="flex justify-between text-sm mb-1"><span>CPU</span>
+      <span class="font-semibold">{{ sys.cpu_percent if sys.cpu_percent is not none else '—' }}%</span></div>
+    {{ bar(sys.cpu_percent or 0) }}
+    {% if sys.loadavg %}<div class="text-xs text-slate-400 mt-1">load {{ sys.loadavg | join(' / ') }}</div>{% endif %}
+  </div>
+
+  {# GPU #}
+  <div class="bg-white rounded-lg border border-slate-200 p-4" title="Jetson GPU busy %, from sysfs.">
+    <div class="flex justify-between text-sm mb-1"><span>GPU</span>
+      <span class="font-semibold">{{ sys.gpu_load ~ '%' if sys.gpu_load is not none else 'n/a' }}</span></div>
+    {{ bar(sys.gpu_load or 0) }}
+    <div class="text-xs text-slate-400 mt-1">device: {{ sys.device }}</div>
+  </div>
+
+  {# Memory — the 8GB hard limit #}
+  <div class="bg-white rounded-lg border border-slate-200 p-4"
+       title="Unified CPU+GPU memory. 8GB is the hard limit; one model resident at a time.">
+    <div class="flex justify-between text-sm mb-1"><span>Memory</span>
+      <span class="font-semibold">{{ sys.memory.percent if sys.memory.percent is not none else '—' }}%</span></div>
+    {{ bar(sys.memory.percent or 0) }}
+    <div class="text-xs text-slate-400 mt-1">
+      {{ sys.memory.used_gb }} / {{ sys.memory.total_gb }} GB
+      {% if sys.memory.swap_total_gb %}· swap {{ sys.memory.swap_used_gb }}/{{ sys.memory.swap_total_gb }}{% endif %}
+    </div>
+  </div>
+
+  {# Disk (NVMe data volume) #}
+  <div class="bg-white rounded-lg border border-slate-200 p-4" title="NVMe data volume (models, images, database).">
+    <div class="flex justify-between text-sm mb-1"><span>Disk</span>
+      <span class="font-semibold">{{ sys.disk.percent if sys.disk.percent is not none else '—' }}%</span></div>
+    {{ bar(sys.disk.percent or 0) }}
+    <div class="text-xs text-slate-400 mt-1">{{ sys.disk.free_gb }} GB free of {{ sys.disk.total_gb }}</div>
+  </div>
+</div>
+
+<div class="grid md:grid-cols-2 gap-6 mb-6">
+  {# Temperatures #}
+  <section>
+    <h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2">Temperatures</h2>
+    <div class="bg-white rounded-lg border border-slate-200 p-4">
+      {% if sys.temperatures %}
+      <div class="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+        {% for t in sys.temperatures %}
+        <div class="flex justify-between">
+          <span class="text-slate-500">{{ t.name }}</span>
+          <span class="font-medium {{ 'text-red-600' if t.c >= 80 else ('text-amber-600' if t.c >= 65 else '') }}">{{ t.c }}°C</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="text-sm text-slate-400">No thermal zones (not a Jetson, or /sys not readable).</div>
+      {% endif %}
+    </div>
+  </section>
+
+  {# Throughput #}
+  <section>
+    <h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2"
+        title="Boards uploaded and server predictions made over time.">Throughput</h2>
+    <div class="bg-white rounded-lg border border-slate-200 p-4">
+      <table class="w-full text-sm">
+        <thead class="text-xs uppercase text-slate-400 text-left">
+          <tr><th class="pb-1">Window</th><th class="pb-1 text-right">Boards in</th><th class="pb-1 text-right">Predictions</th></tr>
+        </thead>
+        <tbody>
+          {% for label, key in [("Last hour","h1"),("Last 24h","d1"),("Last 7d","d7")] %}
+          <tr class="border-t">
+            <td class="py-1 text-slate-500">{{ label }}</td>
+            <td class="py-1 text-right font-medium">{{ tp.boards[key] }}</td>
+            <td class="py-1 text-right font-medium">{{ tp.predictions[key] }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+{# Per-model latency — the number that actually picks a serving config #}
+<section>
+  <h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-1">Inference latency per model</h2>
+  <p class="text-xs text-slate-400 mb-2">Measured per board on this hardware, from stored predictions.</p>
+  <div class="bg-white rounded-lg border border-slate-200 overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-slate-50 text-left text-xs uppercase text-slate-500">
+        <tr>
+          <th class="px-3 py-2">Model</th>
+          <th class="px-3 py-2 text-right" title="Number of predictions measured.">n</th>
+          <th class="px-3 py-2 text-right" title="Fastest board.">min</th>
+          <th class="px-3 py-2 text-right" title="Average per-board latency.">avg</th>
+          <th class="px-3 py-2 text-right" title="95th percentile — the slow tail.">p95</th>
+          <th class="px-3 py-2 text-right" title="How many of these used test-time augmentation (≈4× compute).">TTA</th>
+          <th class="px-3 py-2 text-right">Last run</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y">
+        {% for m in models %}
+        <tr>
+          <td class="px-3 py-2">
+            <span class="font-medium">{{ m.model_id }}:{{ m.version }}</span>
+            <span class="text-xs bg-slate-100 rounded px-1.5 py-0.5 ml-1">{{ m.task }}</span>
+          </td>
+          <td class="px-3 py-2 text-right">{{ m.n }}</td>
+          <td class="px-3 py-2 text-right text-slate-500">{{ m.min_ms }} ms</td>
+          <td class="px-3 py-2 text-right font-medium">{{ m.avg_ms }} ms</td>
+          <td class="px-3 py-2 text-right">{{ m.p95_ms }} ms</td>
+          <td class="px-3 py-2 text-right text-slate-500">{{ m.tta_n }}</td>
+          <td class="px-3 py-2 text-right text-xs text-slate-400">
+            {{ m.last_at.strftime("%m-%d %H:%M") if m.last_at else "—" }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="px-3 py-4 text-slate-400">
+          No predictions yet. Ingest a board or run a replay to see latency here.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<div class="text-xs text-slate-400 mt-3">
+  Updated {{ sys.temperatures | length }} thermal zones · refreshed just now
+</div>

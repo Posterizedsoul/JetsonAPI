@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Performance{% endblock %}
+{% block body %}
+<div class="flex items-baseline justify-between mb-1">
+  <h1 class="text-lg font-semibold">Performance</h1>
+  <label class="text-xs text-slate-500 flex items-center gap-1"
+         title="Auto-refresh the numbers below every few seconds.">
+    <input type="checkbox" id="autorefresh" checked
+           onchange="document.getElementById('perf').setAttribute('hx-trigger', this.checked ? 'load, every 5s' : 'load'); htmx.process(document.getElementById('perf'));">
+    live (5s)
+  </label>
+</div>
+<p class="text-sm text-slate-500 mb-4">
+  Hardware and inference metrics for this box. GPU load and temperatures come
+  straight from the Jetson; latency is measured per board on this hardware.
+</p>
+
+<div id="perf" hx-get="/ui/perf/data" hx-trigger="load, every 5s" hx-swap="innerHTML">
+  <div class="text-sm text-slate-400">Loading metrics…</div>
+</div>
+{% endblock %}

@@ -28,6 +28,7 @@ Built and verified end to end:
 | Review read API — sort by ordinal error, margin, confidence | working |
 | Per-device API keys, sha256-hashed | working |
 | Admin UI — dashboard, model register/activate/load/unload, key create/revoke | working |
+| Performance page — live CPU/GPU/mem/temps + per-model latency & throughput | working |
 | Running on the real Orin Nano, on GPU | working |
 | `setup-jetson.sh` | deploys on hardware; see notes |
 
