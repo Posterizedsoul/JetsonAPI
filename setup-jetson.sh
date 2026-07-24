@@ -639,11 +639,14 @@ EOF"
 # Everything needed to actually use the box, in one block. Printed at the end
 # of deploy and re-runnable any time: `sudo ./setup-jetson.sh access`.
 print_access() {
+    # Every lookup ends in `|| true`: under `set -e` + pipefail a failing probe
+    # (Tailscale down, gateway unreachable) would otherwise abort the whole
+    # panel instead of just showing that one line as unavailable.
     local ts lan key health
-    ts=$(tailscale ip -4 2>/dev/null | head -1)
-    lan=$(hostname -I 2>/dev/null | awk '{print $1}')
+    ts=$(tailscale ip -4 2>/dev/null | head -1 || true)
+    lan=$(hostname -I 2>/dev/null | awk '{print $1}' || true)
     health=$(curl -fsS --max-time 5 http://localhost:8000/health 2>/dev/null \
-             | grep -o '"status":"[a-z]*"' | cut -d'"' -f4)
+             | grep -o '"status":"[a-z]*"' | cut -d'"' -f4 || true)
 
     printf '\n%s┌─ Access ────────────────────────────────────────────%s\n' "$BOLD$BLUE" "$RESET"
     printf '%s│%s  Gateway health : %s\n' "$BOLD$BLUE" "$RESET" \
