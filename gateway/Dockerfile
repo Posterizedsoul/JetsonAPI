@@ -7,11 +7,21 @@ FROM ${BASE_IMAGE}
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# The dustynv/L4T base ships an old pip and a pip.conf pointing at piwheels as
+# the primary index, where "no versions found for fastapi" comes from. Upgrade
+# pip and force PyPI as the index; keep piwheels as a fallback for arm64 binary
+# wheels (pillow, psycopg-binary) that PyPI may not carry for aarch64.
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir \
+        --index-url https://pypi.org/simple \
+        --extra-index-url https://www.piwheels.org/simple \
+        -r requirements.txt
 
 # torch is not in requirements.txt because the L4T base image already ships a
-# CUDA-enabled build that must not be overwritten by a PyPI wheel.
-RUN python -c "import torch" 2>/dev/null || pip install --no-cache-dir torch
+# CUDA-enabled build that must not be overwritten by a PyPI wheel. If the base
+# has no torch (the x86 python:slim dev image), fall back to a PyPI build.
+RUN python -c "import torch" 2>/dev/null \
+    || pip install --no-cache-dir --index-url https://pypi.org/simple torch
 
 COPY app ./app
 COPY migrations ./migrations
