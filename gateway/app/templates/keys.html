@@ -20,14 +20,14 @@
       <input name="name" required placeholder="phone-01"
              class="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm">
     </label>
-    <label class="text-sm">Scope
+    <label class="text-sm" title="ingest = a field device that only uploads boards. admin = manage models and keys and log into this UI.">Scope
       <select name="scope" class="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
               onchange="this.form.device_id.disabled = this.value==='admin'">
         <option value="ingest">ingest</option>
         <option value="admin">admin</option>
       </select>
     </label>
-    <label class="text-sm">Device id <span class="text-slate-400">(ingest only)</span>
+    <label class="text-sm" title="Required for ingest keys. Uploads with this key are attributed to this device id — the client can't spoof it.">Device id <span class="text-slate-400">(ingest only)</span>
       <input name="device_id" placeholder="phone-01"
              class="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm">
     </label>

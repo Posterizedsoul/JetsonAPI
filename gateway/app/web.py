@@ -112,6 +112,13 @@ def logout():
     return resp
 
 
+@router.get("/ui/help", response_class=HTMLResponse)
+def help_page(request: Request, admin: dict = Depends(require_web_admin)):
+    return templates.TemplateResponse(request, "help.html", {
+        "admin": admin, "nav": "help",
+    })
+
+
 # ----------------------------------------------------------------- dashboard --
 
 @router.get("/", response_class=HTMLResponse)
@@ -126,7 +133,9 @@ def dashboard(request: Request, admin: dict = Depends(require_web_admin)):
         " (SELECT count(*) FROM views) AS views,"
         " (SELECT count(*) FROM predictions WHERE source='server') AS server_preds,"
         " (SELECT count(*) FROM devices) AS devices,"
-        " (SELECT count(*) FROM api_keys WHERE revoked_at IS NULL) AS keys"
+        # Not "keys": Jinja's foo.keys would resolve to dict.keys(), not the
+        # value. Any dict-method name (keys/values/items/get) is a footgun.
+        " (SELECT count(*) FROM api_keys WHERE revoked_at IS NULL) AS active_keys"
     )[0]
     active = db.query(
         "SELECT model_id, version, task, classes FROM models WHERE active"

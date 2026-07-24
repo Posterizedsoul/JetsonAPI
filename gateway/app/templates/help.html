@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}How to{% endblock %}
+{% block body %}
+<h1 class="text-lg font-semibold mb-1">How to run this</h1>
+<p class="text-sm text-slate-500 mb-6">The short version of everything. Hover any label in the UI for a one-line hint.</p>
+
+{% macro card(title) %}
+<section class="bg-white rounded-lg border border-slate-200 p-4 mb-4">
+  <h2 class="text-sm font-semibold mb-2">{{ title }}</h2>
+  <div class="text-sm text-slate-600 space-y-2">{{ caller() }}</div>
+</section>
+{% endmacro %}
+
+{% set code = "block bg-slate-900 text-slate-100 rounded px-3 py-2 text-xs font-mono overflow-x-auto whitespace-pre" %}
+
+{% call card("What this is") %}
+<p>A verification server. Field devices photograph a board, run a small model,
+and upload here. This box runs the heavy model on the upload and stores both
+predictions so you can check how the small model is doing.</p>
+<p>It is <b>model-agnostic</b>: the class names, input size, and preprocessing
+all come from inside each model archive — nothing about a specific model is
+baked into this server or these pages.</p>
+{% endcall %}
+
+{% call card("1 · Register a model") %}
+<p>Go to <a href="/ui/models" class="text-blue-700 underline">Models</a> →
+<b>Register an archive</b>. Upload a TorchScript <code>.ts.pt</code> file with an
+embedded <code>metadata.json</code>. Give it an id and version, tick
+<b>Activate</b> to make it the live model for its task.</p>
+<p class="text-slate-500">Nothing to configure — task, classes, and preprocessing
+are read from the file.</p>
+{% endcall %}
+
+{% call card("2 · Load vs. Activate") %}
+<p><b>Activate</b> = the model new uploads are graded against (one per task).</p>
+<p><b>Load</b> = pull it into GPU memory now so the first prediction isn't slow.
+Only one model fits in memory at a time; loading another unloads the first.</p>
+{% endcall %}
+
+{% call card("3 · Make an API key") %}
+<p>On <a href="/ui/keys" class="text-blue-700 underline">API keys</a>:</p>
+<ul class="list-disc ml-5 space-y-1">
+  <li><b>ingest</b> key — for a field device. Bound to a device id; its uploads
+      are attributed to that device. This is what goes in the phone/camera client.</li>
+  <li><b>admin</b> key — logs into this UI and manages models and keys.</li>
+</ul>
+<p class="text-amber-700">The key is shown once, right after you create it. Copy it then.</p>
+{% endcall %}
+
+{% call card("4 · Upload a board (what your client codes against)") %}
+<p>Multipart POST. 1–3 views, one lighting label each, optional edge prediction
+and metadata. Idempotent on board id + image bytes, so retries never duplicate.</p>
+<code class="{{ code }}">curl -X POST http://THIS-HOST:8000/v1/boards \
+  -H "X-API-Key: YOUR_INGEST_KEY" \
+  -F "board_id=board-0001" \
+  -F "task=classification" \
+  -F "views=@both.png"    -F "lighting=both" \
+  -F "views=@light_a.png" -F "lighting=light_a" \
+  -F "views=@light_b.png" -F "lighting=light_b"</code>
+<p>Full contract with every field: <a href="/docs" class="text-blue-700 underline">API docs</a>.</p>
+{% endcall %}
+
+{% call card("Running the server (on the Jetson)") %}
+<code class="{{ code }}">cd ~/JetsonAPI
+git pull origin main
+sudo ./setup-jetson.sh deploy    # build, start, show access panel
+sudo ./setup-jetson.sh access    # reprint IPs, URLs, admin key, login QR</code>
+<p>Reach it remotely over Tailscale — both the Jetson and your device must be on
+the same tailnet. The access panel prints a QR: scan it to log in without typing.</p>
+{% endcall %}
+
+{% call card("When something's off") %}
+<ul class="list-disc ml-5 space-y-1">
+  <li>Uploads work but no server prediction → no <b>active</b> model for that task.
+      Activate one under Models. Check <a href="/ui" class="text-blue-700 underline">Dashboard → Recent errors</a>.</li>
+  <li>Logs: <code>docker compose logs -f gateway</code></li>
+  <li>Health: <a href="/health" class="text-blue-700 underline">/health</a></li>
+</ul>
+{% endcall %}
+{% endblock %}

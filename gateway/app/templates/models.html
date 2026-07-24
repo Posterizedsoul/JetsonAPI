@@ -26,11 +26,12 @@
       <input name="version" required placeholder="medium-v3"
              class="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm">
     </label>
-    <label class="text-sm sm:col-span-2">Archive
+    <label class="text-sm sm:col-span-2" title="A TorchScript file exported with an embedded metadata.json. Rejected if the metadata is missing or malformed.">Archive
       <input type="file" name="archive" required accept=".pt,.ts,.ts.pt"
              class="mt-1 w-full text-sm">
     </label>
-    <label class="text-sm flex items-center gap-2">
+    <label class="text-sm flex items-center gap-2"
+           title="Immediately make this the live model for its task. Otherwise it's registered but idle until you Activate it.">
       <input type="checkbox" name="activate" value="true">
       Activate for its task after registering
     </label>

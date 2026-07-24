@@ -21,7 +21,8 @@
     <a href="/ui"        class="{{ on if nav=='dashboard' else item }}">Dashboard</a>
     <a href="/ui/models" class="{{ on if nav=='models'    else item }}">Models</a>
     <a href="/ui/keys"   class="{{ on if nav=='keys'      else item }}">API keys</a>
-    <a href="/docs"      class="{{ item }}">API docs</a>
+    <a href="/ui/help"   class="{{ on if nav=='help'      else item }}">How to</a>
+    <a href="/docs"      class="{{ item }}" title="Interactive API reference (OpenAPI)">API docs</a>
     <a href="/ui/logout" class="ml-auto {{ item }}">Log out</a>
   </div>
 </nav>

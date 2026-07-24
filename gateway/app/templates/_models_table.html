@@ -9,9 +9,9 @@
     <thead class="bg-slate-50 text-left text-xs uppercase text-slate-500">
       <tr>
         <th class="px-3 py-2">Model</th>
-        <th class="px-3 py-2">Task</th>
-        <th class="px-3 py-2">Classes</th>
-        <th class="px-3 py-2">State</th>
+        <th class="px-3 py-2" title="Task type from the archive metadata: classification, detection, or segmentation.">Task</th>
+        <th class="px-3 py-2" title="Class labels, read from the model archive — never set here.">Classes</th>
+        <th class="px-3 py-2" title="active = grades new uploads · loaded = held in GPU memory right now.">State</th>
         <th class="px-3 py-2 text-right">Actions</th>
       </tr>
     </thead>
@@ -33,14 +33,17 @@
           {% set btn = "text-xs rounded px-2 py-1 hover:bg-slate-200 bg-slate-100" %}
           {% if not m.active %}
           <button class="{{ btn }}" hx-post="/ui/models/{{ m.id }}/activate"
-                  hx-target="#models" hx-swap="innerHTML">Activate</button>
+                  hx-target="#models" hx-swap="innerHTML"
+                  title="Make this the model that grades new uploads for the '{{ m.task }}' task. Replaces the current active one.">Activate</button>
           {% endif %}
           {% if m.loaded %}
           <button class="{{ btn }}" hx-post="/ui/models/{{ m.id }}/unload"
-                  hx-target="#models" hx-swap="innerHTML">Unload</button>
+                  hx-target="#models" hx-swap="innerHTML"
+                  title="Free this model from the 8GB memory. It cold-loads again on next use.">Unload</button>
           {% else %}
           <button class="{{ btn }}" hx-post="/ui/models/{{ m.id }}/load"
-                  hx-target="#models" hx-swap="innerHTML">Load</button>
+                  hx-target="#models" hx-swap="innerHTML"
+                  title="Load into GPU memory now so the first prediction isn't slow. Only one model is resident at a time.">Load</button>
           {% endif %}
         </td>
       </tr>
