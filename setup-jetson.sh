@@ -147,8 +147,15 @@ step_preflight() {
         ok "disk space sufficient (${free_mb}MB free)"
     fi
 
-    if retry curl -fsS --max-time 10 -o /dev/null https://repo.download.nvidia.com; then
-        ok "network reachable"
+    # Reachability, not a 200: the repo root returns 403 (it's a package host,
+    # not a website), so -f would wrongly fail on a perfectly good network.
+    # Any HTTP status back means DNS + TCP + TLS all worked; only 000 (no
+    # connection) is a real failure.
+    local code
+    code=$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' \
+           https://repo.download.nvidia.com 2>>"$LOG_FILE" || echo 000)
+    if [[ $code != 000 ]]; then
+        ok "network reachable (NVIDIA repo answered HTTP $code)"
     else
         die "cannot reach repo.download.nvidia.com — check networking first"
     fi
