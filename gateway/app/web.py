@@ -9,7 +9,6 @@ Model-agnostic: nothing here names a class or a task. Class lists come from
 each model's metadata and are rendered as-is.
 """
 
-import io
 from pathlib import Path
 
 import qrcode
@@ -64,6 +63,22 @@ def login_page(request: Request, t: str | None = None):
     return templates.TemplateResponse(request, "login.html", {"error": None})
 
 
+def _qr_ansi(data: str) -> str:
+    """A terminal QR that actually scans. Each module is two spaces so it's
+    square, coloured with ANSI background so it's real black-on-white whatever
+    the terminal theme is (half-block glyphs from print_ascii misalign and
+    scanners choke on them). border=2 is the quiet zone."""
+    qr = qrcode.QRCode(border=2)
+    qr.add_data(data)
+    qr.make(fit=True)
+    white, black, reset = "\033[107m", "\033[40m", "\033[0m"
+    lines = []
+    for row in qr.get_matrix():
+        cells = "".join((black if cell else white) + "  " for cell in row)
+        lines.append(cells + reset)
+    return "\n".join(lines)
+
+
 @router.get("/ui/login-qr", response_class=PlainTextResponse)
 def login_qr(base: str, x_api_key: str = Header(...),
              _: dict = Depends(auth.require_admin)):
@@ -73,12 +88,7 @@ def login_qr(base: str, x_api_key: str = Header(...),
     Tailscale address."""
     token = auth.mint_login_token(x_api_key)
     url = f"{base.rstrip('/')}/ui/login?t={token}"
-    qr = qrcode.QRCode(border=1)
-    qr.add_data(url)
-    qr.make(fit=True)
-    buf = io.StringIO()
-    qr.print_ascii(out=buf)
-    return f"{buf.getvalue()}\nScan to log in (one use, {auth.LOGIN_TOKEN_TTL // 60} min):\n{url}\n"
+    return f"{_qr_ansi(url)}\n\nScan to log in (one use, {auth.LOGIN_TOKEN_TTL // 60} min):\n{url}\n"
 
 
 @router.post("/ui/login")
