@@ -1,22 +1,28 @@
 {% extends "base.html" %}
 {% block title %}Log in{% endblock %}
 {% block body %}
-<div class="max-w-sm mx-auto mt-16">
-  <h1 class="text-xl font-semibold mb-1">Jetson admin</h1>
-  <p class="text-sm text-slate-500 mb-6">Paste an admin API key to continue.</p>
-  {% if error %}
-  <div class="mb-4 text-sm text-red-700 bg-red-100 rounded px-3 py-2">{{ error }}</div>
-  {% endif %}
-  <form method="post" action="/ui/login" class="space-y-3">
-    <input type="password" name="api_key" autofocus required placeholder="admin key"
-           class="w-full rounded border border-slate-300 px-3 py-2 text-sm">
-    <button class="w-full rounded bg-slate-900 text-white py-2 text-sm font-medium hover:bg-slate-700">
-      Log in
-    </button>
-  </form>
-  <p class="text-xs text-slate-400 mt-6">
+<div class="max-w-sm mx-auto mt-20">
+  <div class="flex items-center gap-2 mb-6 justify-center">
+    <span class="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500 text-slate-900 text-base font-bold">J</span>
+    <span class="text-lg font-semibold">Jetson admin</span>
+  </div>
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+    <h1 class="text-base font-semibold mb-1">Sign in</h1>
+    <p class="text-sm text-slate-500 mb-4">Paste an admin API key, or scan the login QR from the terminal.</p>
+    {% if error %}
+    <div class="mb-4 text-sm text-red-700 bg-red-100 rounded-md px-3 py-2">{{ error }}</div>
+    {% endif %}
+    <form method="post" action="/ui/login" class="space-y-3">
+      <input type="password" name="api_key" autofocus required placeholder="admin key"
+             class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none">
+      <button class="w-full rounded-md bg-slate-900 text-white py-2 text-sm font-medium hover:bg-slate-700">
+        Log in
+      </button>
+    </form>
+  </div>
+  <p class="text-xs text-slate-400 mt-4 text-center">
     No key yet? On the box:<br>
-    <code class="text-slate-500">docker compose exec gateway python3 /app/scripts/create_key.py admin you</code>
+    <code class="text-slate-500">sudo ./setup-jetson.sh access</code> &nbsp;— prints a key and a scannable QR
   </p>
 </div>
 {% endblock %}
