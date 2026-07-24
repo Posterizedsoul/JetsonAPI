@@ -630,6 +630,54 @@ EOF"
             info "run: docker compose exec gateway python3 /app/scripts/create_key.py admin bootstrap"
         fi
     fi
+
+    [[ $DRY_RUN == 1 ]] || print_access
+}
+
+# -------------------------------------------------------------------- access --
+
+# Everything needed to actually use the box, in one block. Printed at the end
+# of deploy and re-runnable any time: `sudo ./setup-jetson.sh access`.
+print_access() {
+    local ts lan key health
+    ts=$(tailscale ip -4 2>/dev/null | head -1)
+    lan=$(hostname -I 2>/dev/null | awk '{print $1}')
+    health=$(curl -fsS --max-time 5 http://localhost:8000/health 2>/dev/null \
+             | grep -o '"status":"[a-z]*"' | cut -d'"' -f4)
+
+    printf '\n%s┌─ Access ────────────────────────────────────────────%s\n' "$BOLD$BLUE" "$RESET"
+    printf '%s│%s  Gateway health : %s\n' "$BOLD$BLUE" "$RESET" \
+        "${health:-${RED}unreachable${RESET}}"
+
+    if [[ -n $ts ]]; then
+        printf '%s│%s  Admin UI       : %shttp://%s:8000/ui%s   (Tailscale, use this remotely)\n' \
+            "$BOLD$BLUE" "$RESET" "$GREEN" "$ts" "$RESET"
+        printf '%s│%s  API docs       : http://%s:8000/docs\n' "$BOLD$BLUE" "$RESET" "$ts"
+    else
+        printf '%s│%s  Tailscale      : %snot connected%s — run: sudo tailscale up\n' \
+            "$BOLD$BLUE" "$RESET" "$YELLOW" "$RESET"
+    fi
+    if [[ -n $lan ]]; then
+        printf '%s│%s  On the LAN     : http://%s:8000/ui\n' "$BOLD$BLUE" "$RESET" "$lan"
+    fi
+    printf '%s│%s  On the box     : http://localhost:8000/ui\n' "$BOLD$BLUE" "$RESET"
+
+    local marker="$DATA_DIR/.admin-key-created"
+    printf '%s│%s\n' "$BOLD$BLUE" "$RESET"
+    if [[ -f $marker ]]; then
+        key=$(cat "$marker" 2>/dev/null)
+        printf '%s│%s  Admin key      : %s%s%s\n' "$BOLD$BLUE" "$RESET" "$BOLD" "$key" "$RESET"
+        printf '%s│%s                   (also saved at %s)\n' "$BOLD$BLUE" "$RESET" "$marker"
+    else
+        printf '%s│%s  Admin key      : none yet — create one:\n' "$BOLD$BLUE" "$RESET"
+        printf '%s│%s    docker compose exec gateway python3 /app/scripts/create_key.py admin you\n' \
+            "$BOLD$BLUE" "$RESET"
+    fi
+    printf '%s│%s\n' "$BOLD$BLUE" "$RESET"
+    printf '%s│%s  Logs           : cd %s && docker compose logs -f gateway\n' \
+        "$BOLD$BLUE" "$RESET" "$SCRIPT_DIR"
+    printf '%s│%s  Restart        : sudo %s deploy\n' "$BOLD$BLUE" "$RESET" "$0"
+    printf '%s└─────────────────────────────────────────────────────%s\n' "$BOLD$BLUE" "$RESET"
 }
 
 # -------------------------------------------------------------------- verify --
@@ -707,6 +755,7 @@ Steps:
   docker       docker + Compose v2 + nvidia as DEFAULT runtime
   tailscale    install and enable
   deploy       generate .env, build, start, wait for health, mint admin key
+  access       print IPs, UI/docs URLs, and the admin key
   verify       check everything
 
 Destructive, run explicitly:
@@ -762,6 +811,7 @@ main() {
             docker)      step_docker ;;
             tailscale)   step_tailscale ;;
             deploy)      step_deploy ;;
+            access)      print_access ;;
             verify)      step_verify || warn "some verification checks failed" ;;
             nvme-format) step_nvme_format ;;
             nvme-boot)   step_nvme_boot ;;
