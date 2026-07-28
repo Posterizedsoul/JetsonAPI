@@ -139,26 +139,42 @@ def disk() -> dict:
     }
 
 
+def resident_model() -> str | None:
+    if not runner.model_uuid:
+        return None
+    # id is a uuid column and model_uuid is a str, so cast rather than relying
+    # on the driver to adapt it.
+    rows = db.query("SELECT model_id, version FROM models WHERE id::text = %s",
+                    (str(runner.model_uuid),))
+    return f"{rows[0]['model_id']}:{rows[0]['version']}" if rows else None
+
+
+def _safe(label: str, fn, default, errors: list):
+    """Collect one metric. A reading that fails should cost you that one
+    number, not the whole page — and should say which one and why."""
+    try:
+        return fn()
+    except Exception as exc:
+        errors.append(f"{label}: {type(exc).__name__}: {exc}")
+        return default
+
+
 def system() -> dict:
-    resident = None
-    if runner.model_uuid:
-        rows = db.query("SELECT model_id, version FROM models WHERE id = %s",
-                        (runner.model_uuid,))
-        if rows:
-            resident = f"{rows[0]['model_id']}:{rows[0]['version']}"
+    errors: list[str] = []
     return {
-        "cpu_percent": cpu_percent(),
-        "memory": memory(),
-        "loadavg": loadavg(),
-        "gpu_load": gpu_load(),
-        "temperatures": temperatures(),
-        "disk": disk(),
+        "cpu_percent": _safe("cpu", cpu_percent, None, errors),
+        "memory": _safe("memory", memory, {}, errors),
+        "loadavg": _safe("loadavg", loadavg, None, errors),
+        "gpu_load": _safe("gpu", gpu_load, None, errors),
+        "temperatures": _safe("temperatures", temperatures, [], errors),
+        "disk": _safe("disk", disk, {}, errors),
         "device": runner.device,
-        "resident_model": resident,
+        "resident_model": _safe("resident", resident_model, None, errors),
         "backend": runner.backend if runner.model is not None else None,
         # Which ONNX Runtime execution provider actually loaded. CPUExecution-
         # Provider here means ONNX models are NOT using the GPU.
         "provider": runner.provider,
+        "errors": errors,
     }
 
 

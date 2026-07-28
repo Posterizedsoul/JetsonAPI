@@ -146,7 +146,9 @@ def perf_data(request: Request, admin: dict = Depends(require_web_admin)):
         try:
             ctx[key] = fn()
         except Exception as exc:
-            ctx["errors"].append(f"{key}: {exc}")
+            ctx["errors"].append(f"{key}: {type(exc).__name__}: {exc}")
+    # system() collects per-reading, so surface those individually too.
+    ctx["errors"].extend(ctx["sys"].get("errors", []))
     return templates.TemplateResponse(request, "_perf.html", ctx)
 
 
