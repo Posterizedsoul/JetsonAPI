@@ -1,8 +1,10 @@
 """Public API. The envelope is stable across model swaps: what changes between
 models is the CONTENT of `results`, never the shape of the response."""
 
+import asyncio
 import hashlib
 import json
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -30,18 +32,27 @@ def _log_error(kind: str, detail: str, context: dict | None = None) -> None:
 
 # ------------------------------------------------------------------- models --
 
-def save_and_register(data: bytes, model_id: str, version: str,
-                      activate: bool) -> dict:
-    """Register a TorchScript archive. The embedded metadata.json IS the
-    manifest — task, classes, input size and preprocessing all come from it.
-    Adding a model is this call plus nothing else. Shared by the JSON API and
-    the web UI so the two can never drift."""
-    dest = Path(config.MODEL_DIR) / f"{model_id}__{version}.ts.pt"
+def save_and_register(data: bytes, model_id: str, version: str, activate: bool,
+                      filename: str | None = None,
+                      metadata: str | None = None) -> dict:
+    """Register a model archive — TorchScript (.ts.pt) or ONNX (.onnx). The
+    embedded metadata IS the manifest: task, classes, input size and
+    preprocessing all come from it. Adding a model is this call plus nothing
+    else. Shared by the JSON API and the web UI so the two can never drift.
+
+    `metadata` is a fallback used only when the archive embeds none of its own
+    — stock ONNX exports don't. It is stored on the model row, so a registered
+    model is always fully described.
+    """
+    # Extension decides the backend, so preserve the uploaded one instead of
+    # forcing .ts.pt (which silently made every ONNX upload unloadable).
+    suffix = ".onnx" if (filename or "").lower().endswith(".onnx") else ".ts.pt"
+    dest = Path(config.MODEL_DIR) / f"{model_id}__{version}{suffix}"
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(data)
 
     try:
-        meta = read_metadata(dest)
+        meta = read_metadata(dest, fallback=metadata)
     except ManifestError as exc:
         dest.unlink(missing_ok=True)
         raise HTTPException(422, f"rejected: {exc}") from exc
@@ -75,9 +86,11 @@ async def register_model(
     model_id: str = Form(...),
     version: str = Form(...),
     activate: bool = Form(False),
+    metadata: str | None = Form(None),
     _: dict = Depends(auth.require_admin),
 ) -> dict:
-    return save_and_register(await archive.read(), model_id, version, activate)
+    return save_and_register(await archive.read(), model_id, version, activate,
+                             filename=archive.filename, metadata=metadata)
 
 
 @router.get("/models")
@@ -113,11 +126,20 @@ def activate_model(model_uuid: str, _: dict = Depends(auth.require_admin)) -> di
 
 @router.post("/models/{model_uuid}/load")
 def load_model(model_uuid: str, _: dict = Depends(auth.require_admin)) -> dict:
-    rows = db.query("SELECT archive_key FROM models WHERE id = %s", (model_uuid,))
+    rows = db.query("SELECT archive_key, meta FROM models WHERE id = %s", (model_uuid,))
     if not rows:
         raise HTTPException(404, "no such model")
-    meta = runner.load(rows[0]["archive_key"], model_uuid)
-    return {"loaded": model_uuid, "task": meta["task"], "classes": meta["classes"]}
+    meta = load_model_row(rows[0], model_uuid)
+    return {"loaded": model_uuid, "task": meta["task"], "classes": meta["classes"],
+            "backend": runner.backend, "provider": runner.provider}
+
+
+def load_model_row(row: dict, model_uuid: str) -> dict:
+    """Load a registered model, handing the stored manifest to the runner as a
+    fallback. An ONNX file that embedded no metadata of its own still needs it
+    at load time, and the row is where it was kept at registration."""
+    return runner.load(row["archive_key"], model_uuid,
+                       fallback_meta=json.dumps(row.get("meta") or {}))
 
 
 @router.post("/models/{model_uuid}/unload")
@@ -129,7 +151,7 @@ def unload_model(model_uuid: str, _: dict = Depends(auth.require_admin)) -> dict
 
 def active_model(task: str) -> dict | None:
     rows = db.query(
-        "SELECT id, model_id, version, task, archive_key, classes"
+        "SELECT id, model_id, version, task, archive_key, classes, meta"
         " FROM models WHERE task = %s AND active",
         (task,),
     )
@@ -267,7 +289,7 @@ def run_server_inference(board_uuid: str, task: str, replay_job: str | None = No
         return None
     try:
         if not runner.is_loaded(str(model["id"])):
-            runner.load(model["archive_key"], str(model["id"]))
+            load_model_row(model, str(model["id"]))
 
         views = db.query(
             "SELECT object_key FROM views WHERE board = %s ORDER BY created_at, id",
@@ -356,8 +378,28 @@ def list_boards(
 
 
 @router.get("/boards/{board_id}")
-def get_board(board_id: str, _: dict = Depends(auth.require_key)) -> dict:
-    rows = db.query("SELECT * FROM boards WHERE board_id = %s", (board_id,))
+async def get_board(board_id: str, wait: float = 0,
+                    _: dict = Depends(auth.require_key)) -> dict:
+    """Read a board back. With `wait`, hold the request until the server
+    prediction lands.
+
+    Inference is a background task, so a field client that wants the result
+    would otherwise have to poll. `wait` seconds turns that into one request
+    that returns the moment the row appears. `wait=0` is the old behaviour
+    exactly: the loop runs once and falls straight through.
+    """
+    # ponytail: polls the DB every 250ms. One station per rig and a single
+    # uvicorn worker, so this is cheap; swap for LISTEN/NOTIFY if it fans out.
+    deadline = time.monotonic() + min(max(wait, 0.0), 60.0)
+    while True:
+        rows = db.query("SELECT * FROM boards WHERE board_id = %s", (board_id,))
+        ready = rows and (not wait or db.query(
+            "SELECT 1 FROM predictions WHERE board = %s AND source = 'server'"
+            " LIMIT 1", (rows[0]["id"],)))
+        if ready or time.monotonic() >= deadline:
+            break
+        await asyncio.sleep(0.25)
+
     if not rows:
         raise HTTPException(404, "no such board")
     board = rows[0]

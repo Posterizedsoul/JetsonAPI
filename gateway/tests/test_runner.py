@@ -18,6 +18,8 @@ from app.runner import ManifestError, ModelRunner, parse_metadata
 MODELS = Path("/models")
 BOARD = MODELS / "seed_board_clf.ts.pt"
 DETECTOR = MODELS / "seed_detector.ts.pt"
+ONNX = MODELS / "seed_onnx_clf.onnx"
+ONNX_META = MODELS / "seed_onnx_clf.metadata.json"
 
 pytestmark = pytest.mark.skipif(
     not BOARD.exists(), reason="seed models not built; run scripts/make_seed_models.py"
@@ -182,6 +184,67 @@ def test_swapping_models_evicts_the_previous_one(runner):
 def test_predict_without_a_model_fails_loudly(runner):
     with pytest.raises(RuntimeError):
         runner.predict([png_bytes()])
+
+
+# -------------------------------------------------------------- ONNX backend --
+# A third backend through the same runner: different runtime entirely, 4
+# classes, 224px, and no metadata embedded in the file (which is what
+# torch.onnx.export actually produces). If this needed a special case
+# anywhere outside runner.py's backend dispatch, the abstraction is wrong.
+
+onnx_only = pytest.mark.skipif(
+    not ONNX.exists(), reason="ONNX seed model not built"
+)
+
+
+@onnx_only
+def test_onnx_backend_is_selected_by_extension():
+    from app.runner import backend_of
+    assert backend_of(ONNX) == "onnx"
+    assert backend_of(BOARD) == "torchscript"
+
+
+@onnx_only
+def test_onnx_without_embedded_metadata_is_rejected_without_fallback():
+    """A stock ONNX export carries no manifest. Registration must say so
+    clearly rather than loading a model the server can't interpret."""
+    from app.runner import ManifestError, read_metadata
+    with pytest.raises(ManifestError):
+        read_metadata(ONNX)
+
+
+@onnx_only
+def test_onnx_loads_and_predicts_with_supplied_metadata(runner):
+    fallback = ONNX_META.read_text()
+    meta = runner.load(ONNX, "onnx-1", fallback_meta=fallback)
+
+    assert runner.backend == "onnx"
+    assert runner.provider          # whichever EP won, it must report one
+    assert len(meta["classes"]) == 4
+    assert meta["image_size"] == 224
+
+    out = runner.predict([png_bytes()])
+    assert set(out["probs"]) == set(meta["classes"])
+    assert out["label"] in meta["classes"]
+    assert abs(sum(out["probs"].values()) - 1.0) < 1e-5
+    assert out["latency_ms"] > 0
+
+
+@onnx_only
+def test_swapping_across_backends_evicts_cleanly(runner):
+    """TorchScript -> ONNX -> TorchScript. One model resident regardless of
+    which runtime it belongs to."""
+    runner.load(BOARD, "board-1")
+    assert runner.backend == "torchscript"
+
+    runner.load(ONNX, "onnx-1", fallback_meta=ONNX_META.read_text())
+    assert runner.backend == "onnx"
+    assert not runner.is_loaded("board-1")
+
+    runner.load(BOARD, "board-1")
+    assert runner.backend == "torchscript"
+    assert runner.provider is None      # cleared when leaving ONNX
+    assert not runner.is_loaded("onnx-1")
 
 
 # ------------------------------------------------------------- agnosticism ---

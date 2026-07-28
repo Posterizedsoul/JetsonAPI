@@ -24,11 +24,22 @@ baked into this server or these pages.</p>
 
 {% call card("1 · Register a model") %}
 <p>Go to <a href="/ui/models" class="text-blue-700 underline">Models</a> →
-<b>Register an archive</b>. Upload a TorchScript <code>.ts.pt</code> file with an
-embedded <code>metadata.json</code>. Give it an id and version, tick
-<b>Activate</b> to make it the live model for its task.</p>
-<p class="text-slate-500">Nothing to configure — task, classes, and preprocessing
-are read from the file.</p>
+<b>Register an archive</b>. Upload a TorchScript <code>.ts.pt</code> or an ONNX
+<code>.onnx</code> file. Give it an id and version, tick <b>Activate</b> to make
+it the live model for its task.</p>
+<p class="text-slate-500">Task, classes, and preprocessing are read from metadata
+inside the file — nothing to configure.</p>
+<p><b>ONNX note:</b> <code>torch.onnx.export</code> embeds no metadata, so paste
+the manifest into the <b>Metadata JSON</b> field when registering. It's stored
+with the model. An embedded manifest, if the file has one, always wins.</p>
+<code class="{{ code }}">{
+  "classes": ["a", "b", "c"],
+  "task": "classification",
+  "image_size": 224,
+  "max_views": 1,
+  "normalize_mean": [0.485, 0.456, 0.406],
+  "normalize_std": [0.229, 0.224, 0.225]
+}</code>
 {% endcall %}
 
 {% call card("2 · Load vs. Activate") %}

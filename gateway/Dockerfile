@@ -25,6 +25,15 @@ RUN pip install --no-cache-dir --upgrade pip \
 RUN python3 -c "import torch; print('base torch', torch.__version__)" \
     || pip install --no-cache-dir --index-url https://pypi.org/simple torch
 
+# Same reasoning for ONNX Runtime: JetPack/dustynv images often ship a
+# CUDA-enabled onnxruntime-gpu build, and installing the PyPI wheel over it
+# would silently downgrade ONNX models to CPU. Only install if absent.
+# NOTE: the PyPI aarch64 wheel is CPU-ONLY. For GPU ONNX on Jetson you need
+# NVIDIA's onnxruntime-gpu wheel (pypi.jetson-ai-lab.dev) or a base image that
+# already has it. The Models page shows which provider actually loaded.
+RUN python3 -c "import onnxruntime as o; print('base onnxruntime', o.__version__, o.get_available_providers())" \
+    || pip install --no-cache-dir --index-url https://pypi.org/simple onnxruntime
+
 COPY app ./app
 COPY migrations ./migrations
 # Shipped so the same checks can be run on the Jetson after deploy.

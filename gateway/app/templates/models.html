@@ -12,8 +12,9 @@
 <section class="bg-white rounded-lg border border-slate-200 p-4">
   <h2 class="text-sm font-semibold mb-3">Register an archive</h2>
   <p class="text-xs text-slate-500 mb-3">
-    A TorchScript <code>.ts.pt</code> with an embedded <code>metadata.json</code>.
-    Task, classes, and preprocessing are read from it — nothing to configure here.
+    TorchScript <code>.ts.pt</code> or ONNX <code>.onnx</code>. Task, classes and
+    preprocessing are read from metadata embedded in the file — nothing to
+    configure here. Stock ONNX exports carry none, so paste it below in that case.
   </p>
   <form hx-post="/ui/models/register" hx-target="#models" hx-swap="innerHTML"
         hx-encoding="multipart/form-data" class="grid sm:grid-cols-2 gap-3"
@@ -26,9 +27,16 @@
       <input name="version" required placeholder="medium-v3"
              class="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm">
     </label>
-    <label class="text-sm sm:col-span-2" title="A TorchScript file exported with an embedded metadata.json. Rejected if the metadata is missing or malformed.">Archive
-      <input type="file" name="archive" required accept=".pt,.ts,.ts.pt"
+    <label class="text-sm sm:col-span-2" title="TorchScript (.ts.pt) or ONNX (.onnx). Rejected if no valid manifest is found in the file or pasted below.">Archive
+      <input type="file" name="archive" required accept=".pt,.ts,.onnx"
              class="mt-1 w-full text-sm">
+    </label>
+    <label class="text-sm sm:col-span-2"
+           title="Only used when the file embeds no metadata of its own — an embedded manifest always wins. Required for a stock ONNX export.">
+      Metadata JSON <span class="text-slate-400">(optional — needed for ONNX without embedded metadata)</span>
+      <textarea name="metadata" rows="5" spellcheck="false"
+                class="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-xs font-mono"
+                placeholder='{"classes": ["a", "b"], "task": "classification", "image_size": 224, "normalize_mean": [0.485, 0.456, 0.406], "normalize_std": [0.229, 0.224, 0.225], "max_views": 1}'></textarea>
     </label>
     <label class="text-sm flex items-center gap-2"
            title="Immediately make this the live model for its task. Otherwise it's registered but idle until you Activate it.">

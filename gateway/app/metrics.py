@@ -135,6 +135,10 @@ def system() -> dict:
         "disk": disk(),
         "device": runner.device,
         "resident_model": resident,
+        "backend": runner.backend if runner.model is not None else None,
+        # Which ONNX Runtime execution provider actually loaded. CPUExecution-
+        # Provider here means ONNX models are NOT using the GPU.
+        "provider": runner.provider,
     }
 
 

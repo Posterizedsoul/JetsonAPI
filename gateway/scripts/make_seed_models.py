@@ -162,6 +162,46 @@ def main() -> None:
         (torch.randn(1, 6, 3, 384, 384), torch.ones(1, 6, dtype=torch.bool)),
     )
 
+    # Third seed: the same idea again but through ONNX Runtime instead of
+    # TorchScript. Exported the way torch.onnx.export actually produces
+    # files — with NO embedded metadata — because that is what a user
+    # registering a stock ONNX export will have. The manifest is written
+    # beside it to paste into the Metadata field.
+    onnx_classes = ["alpha", "beta", "gamma", "delta"]
+    onnx_meta = {
+        "classes": onnx_classes,
+        "task": "classification",
+        "variant": "seed-onnx",
+        "image_size": 224,
+        "max_views": 1,
+        "patch_mode": False,
+        "temperature": 1.0,
+        "normalize_mean": [0.485, 0.456, 0.406],
+        "normalize_std": [0.229, 0.224, 0.225],
+        "val_metrics": {"note": "untrained seed"},
+    }
+
+    class SeedOnnxClf(nn.Module):
+        def __init__(self, num_classes: int) -> None:
+            super().__init__()
+            self.encoder = TinyEncoder(64)
+            self.fc = nn.Linear(64, num_classes)
+
+        def forward(self, images: Tensor) -> Tensor:
+            return self.fc(self.encoder(images))
+
+    onnx_path = out / "seed_onnx_clf.onnx"
+    onnx_model = SeedOnnxClf(len(onnx_classes)).eval()
+    out.mkdir(parents=True, exist_ok=True)
+    torch.onnx.export(
+        onnx_model, torch.randn(1, 3, 224, 224), str(onnx_path),
+        input_names=["images"], output_names=["logits"],
+        dynamic_axes={"images": {0: "batch"}, "logits": {0: "batch"}},
+    )
+    (out / "seed_onnx_clf.metadata.json").write_text(json.dumps(onnx_meta, indent=2))
+    print(f"wrote {onnx_path}  task=classification  classes={onnx_classes}")
+    print(f"  (no embedded metadata — paste {onnx_path.stem}.metadata.json when registering)")
+
     det_classes = ["knot", "crack", "split", "wane", "resin"]
     save(
         SeedDetector(len(det_classes)),

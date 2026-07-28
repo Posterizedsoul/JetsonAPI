@@ -208,10 +208,12 @@ async def ui_register(
     request: Request, admin: dict = Depends(require_web_admin),
     archive: UploadFile = File(...), model_id: str = Form(...),
     version: str = Form(...), activate: bool = Form(False),
+    metadata: str = Form(""),
 ):
     try:
         info = routes.save_and_register(
-            await archive.read(), model_id.strip(), version.strip(), activate
+            await archive.read(), model_id.strip(), version.strip(), activate,
+            filename=archive.filename, metadata=metadata or None,
         )
         note = f"Registered {info['model_id']}:{info['version']} " \
                f"({info['task']}, {len(info['classes'])} classes)."
@@ -231,11 +233,13 @@ def ui_model_action(
             routes._activate(model_uuid)
             note = "Activated."
         elif action == "load":
-            row = db.query("SELECT archive_key FROM models WHERE id=%s", (model_uuid,))
+            row = db.query("SELECT archive_key, meta FROM models WHERE id=%s",
+                           (model_uuid,))
             if not row:
                 return _models_fragment(request, "No such model.", "err")
-            runner.load(row[0]["archive_key"], model_uuid)
-            note = "Loaded into memory."
+            routes.load_model_row(row[0], model_uuid)
+            note = f"Loaded into memory ({runner.backend}" \
+                   f"{', ' + runner.provider if runner.provider else ''})."
         elif action == "unload":
             if runner.is_loaded(model_uuid):
                 runner.unload()

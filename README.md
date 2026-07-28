@@ -22,6 +22,7 @@ Built and verified end to end:
 | `docker compose up` → Postgres + MinIO + gateway, `/health` | working |
 | Board-centric schema + migrations at boot | working |
 | `ModelRunner` — load / unload / predict, one model resident | working |
+| Two backends — TorchScript and ONNX Runtime, chosen by file extension | working |
 | Model registry — register, list, activate, load, unload over HTTP | working |
 | Ingest — multipart, 1–3 views, idempotent, lossless originals | working |
 | Inference on ingest, edge + server predictions, agreement scoring | working |
@@ -294,6 +295,24 @@ installs the arm64 plugin binary to
 
 `(model_id, version)` is unique. Bump the version — this is deliberate, so a
 model version's prediction history can never be silently redefined.
+
+### ONNX model won't register, or runs on CPU
+
+Registration reads the manifest from inside the file. TorchScript archives from
+`export.py` embed it; **ONNX files from `torch.onnx.export` do not**. Paste the
+manifest into the **Metadata JSON** field on the Models page (or send a
+`metadata` form field to `POST /v1/models`). It is stored with the model, so
+loading works from then on. An embedded manifest always wins over the pasted one.
+
+To embed it in the file instead, set `metadata_props["metadata.json"]` before
+saving the ONNX model.
+
+**On CPU?** The Performance page shows the execution provider under the GPU
+gauge. `CPUExecutionProvider` means ONNX is not using the GPU — the PyPI
+`onnxruntime` aarch64 wheel is **CPU-only**. For GPU ONNX on Jetson you need
+NVIDIA's `onnxruntime-gpu` wheel (from `pypi.jetson-ai-lab.dev`) or a base image
+that already ships one. The Dockerfile skips installing over an existing build
+for exactly this reason. TorchScript models are unaffected.
 
 ### 422 on registration
 

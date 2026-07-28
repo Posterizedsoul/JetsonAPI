@@ -20,7 +20,15 @@
     <div class="flex justify-between text-sm mb-1"><span>GPU</span>
       <span class="font-semibold">{{ sys.gpu_load ~ '%' if sys.gpu_load is not none else 'n/a' }}</span></div>
     {{ bar(sys.gpu_load or 0) }}
-    <div class="text-xs text-slate-400 mt-1">device: {{ sys.device }}</div>
+    <div class="text-xs text-slate-400 mt-1">
+      device: {{ sys.device }}{% if sys.backend %} · {{ sys.backend }}{% endif %}
+    </div>
+    {% if sys.provider %}
+    <div class="text-xs mt-0.5 {{ 'text-amber-600' if 'CPU' in sys.provider else 'text-emerald-600' }}"
+         title="ONNX Runtime execution provider actually in use. CPUExecutionProvider means ONNX models are not using the GPU.">
+      {{ sys.provider }}{{ ' — not on GPU' if 'CPU' in sys.provider else '' }}
+    </div>
+    {% endif %}
   </div>
 
   {# Memory — the 8GB hard limit #}

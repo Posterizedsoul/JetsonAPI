@@ -44,14 +44,61 @@ class ManifestError(ValueError):
     """Archive metadata is missing or malformed. Registration rejects it."""
 
 
-def read_metadata(archive_path: str | Path) -> dict:
-    """Load and validate the embedded manifest without keeping the model."""
-    extra = {"metadata.json": ""}
+def backend_of(archive_path: str | Path) -> str:
+    """Which runtime serves this file. Extension is the whole rule — no
+    sniffing, no registry: '.onnx' is ONNX Runtime, anything else is
+    TorchScript."""
+    return "onnx" if str(archive_path).lower().endswith(".onnx") else "torchscript"
+
+
+def _onnx_embedded_metadata(archive_path: str | Path) -> str:
+    """ONNX's equivalent of TorchScript's _extra_files is metadata_props, a
+    string->string map on the model. We look for a 'metadata.json' key so the
+    same manifest travels inside either archive format."""
+    import onnxruntime as ort
+
     try:
-        torch.jit.load(str(archive_path), map_location="cpu", _extra_files=extra)
+        opts = ort.SessionOptions()
+        # Reading metadata only: skip graph optimization so this stays cheap
+        # and can't fail on a model the CPU provider would rewrite.
+        opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
+        sess = ort.InferenceSession(str(archive_path), opts,
+                                    providers=["CPUExecutionProvider"])
     except Exception as exc:
-        raise ManifestError(f"not a loadable TorchScript archive: {exc}") from exc
-    return parse_metadata(extra.get("metadata.json") or "")
+        raise ManifestError(f"not a loadable ONNX model: {exc}") from exc
+    props = sess.get_modelmeta().custom_metadata_map or {}
+    return props.get("metadata.json") or props.get("metadata") or ""
+
+
+def read_metadata(archive_path: str | Path, fallback: str | None = None) -> dict:
+    """Load and validate the manifest without keeping the model resident.
+
+    `fallback` is metadata supplied at registration time. It is only consulted
+    when the archive carries none of its own — the embedded copy always wins,
+    so a self-describing archive can never be overridden by a stale paste.
+    Stock ONNX exports have no embedded metadata, which is why the fallback
+    exists at all; TorchScript archives from export.py always embed it.
+    """
+    if backend_of(archive_path) == "onnx":
+        raw = _onnx_embedded_metadata(archive_path)
+    else:
+        extra = {"metadata.json": ""}
+        try:
+            torch.jit.load(str(archive_path), map_location="cpu", _extra_files=extra)
+        except Exception as exc:
+            raise ManifestError(f"not a loadable TorchScript archive: {exc}") from exc
+        raw = extra.get("metadata.json") or ""
+
+    if not raw:
+        raw = (fallback or "").strip()
+        if not raw:
+            raise ManifestError(
+                "no metadata found in the archive. TorchScript archives should "
+                "embed metadata.json via _extra_files; ONNX models via "
+                "metadata_props. For an ONNX export without it, paste the "
+                "manifest JSON in the Metadata field when registering."
+            )
+    return parse_metadata(raw)
 
 
 def parse_metadata(raw: str | bytes) -> dict:
@@ -196,7 +243,10 @@ class ModelRunner:
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self.model = None
+        self.model = None            # TorchScript module, or ORT session
+        self.backend = "torchscript"
+        self.provider: str | None = None   # which ORT execution provider won
+        self._onnx_inputs: list = []
         self.meta: dict = {}
         self.model_uuid: str | None = None
         self.device = config.DEVICE or ("cuda" if torch.cuda.is_available() else "cpu")
@@ -209,23 +259,52 @@ class ModelRunner:
             return False
         return model_uuid is None or self.model_uuid == model_uuid
 
-    def load(self, archive_path: str | Path, model_uuid: str) -> dict:
+    def load(self, archive_path: str | Path, model_uuid: str,
+             fallback_meta: str | None = None) -> dict:
         with self._lock:
             if self.model_uuid == model_uuid and self.model is not None:
                 return self.meta
             self._unload_locked()
-            extra = {"metadata.json": ""}
-            model = torch.jit.load(
-                str(archive_path), map_location=self.device, _extra_files=extra
-            )
-            model.eval()
-            meta = parse_metadata(extra.get("metadata.json") or "")
-            if self.device == "cuda":
-                model = model.to(memory_format=torch.channels_last).half()
-            self.model = model
+            if backend_of(archive_path) == "onnx":
+                meta = self._load_onnx(archive_path, fallback_meta)
+            else:
+                meta = self._load_torchscript(archive_path)
             self.meta = meta
             self.model_uuid = model_uuid
             return meta
+
+    def _load_torchscript(self, archive_path) -> dict:
+        extra = {"metadata.json": ""}
+        model = torch.jit.load(
+            str(archive_path), map_location=self.device, _extra_files=extra
+        )
+        model.eval()
+        meta = parse_metadata(extra.get("metadata.json") or "")
+        if self.device == "cuda":
+            model = model.to(memory_format=torch.channels_last).half()
+        self.model = model
+        self.backend = "torchscript"
+        self.provider = None
+        return meta
+
+    def _load_onnx(self, archive_path, fallback_meta: str | None) -> dict:
+        import onnxruntime as ort
+
+        raw = _onnx_embedded_metadata(archive_path) or (fallback_meta or "")
+        meta = parse_metadata(raw)
+
+        # Preference order, first available wins. TensorRT is skipped on
+        # purpose: it recompiles the graph on first run, which can take
+        # minutes and would look like a hang on load.
+        available = ort.get_available_providers()
+        providers = [p for p in ("CUDAExecutionProvider", "CPUExecutionProvider")
+                     if p in available]
+        sess = ort.InferenceSession(str(archive_path), providers=providers)
+        self.model = sess
+        self.backend = "onnx"
+        self.provider = (sess.get_providers() or ["unknown"])[0]
+        self._onnx_inputs = sess.get_inputs()
+        return meta
 
     def unload(self) -> None:
         with self._lock:
@@ -233,6 +312,8 @@ class ModelRunner:
 
     def _unload_locked(self) -> None:
         self.model = None
+        self.provider = None
+        self._onnx_inputs = []
         self.meta = {}
         self.model_uuid = None
         if torch.cuda.is_available():
@@ -322,8 +403,52 @@ class ModelRunner:
             result["view_attention"] = None
         return result
 
+    def _onnx_run(self, batch: torch.Tensor, n_instances: int, tta: bool):
+        """ONNX Runtime path. Feeds the graph's declared inputs positionally:
+        first input is the image batch, an optional second is the view mask
+        (multi-view models). Outputs come back as numpy and are wrapped in
+        torch tensors so the postprocess functions stay backend-agnostic."""
+        meta = self.meta
+        # ORT wants exactly the dtype the graph declares — no autocasting.
+        want16 = bool(self._onnx_inputs) and "float16" in self._onnx_inputs[0].type
+        arr = batch.to(torch.float16 if want16 else torch.float32).cpu().numpy()
+
+        feed = {self._onnx_inputs[0].name: arr}
+        if len(self._onnx_inputs) > 1:
+            import numpy as np
+            second = self._onnx_inputs[1]
+            dtype = np.bool_ if "bool" in second.type else np.float32
+            feed[second.name] = np.ones((1, n_instances), dtype=dtype)
+
+        outs = [torch.from_numpy(o) if hasattr(o, "dtype") else o
+                for o in self.model.run(None, feed)]
+
+        if tta:
+            # Same flip ensemble as the torch path, run through the session.
+            probs = torch.softmax(outs[0].float() / meta["temperature"], dim=1)
+            for h, v in _TTA_FLIPS[1:]:
+                dims = [d for d, f in zip((-1, -2), (h, v)) if f]
+                flipped = dict(feed)
+                flipped[self._onnx_inputs[0].name] = (
+                    batch.flip(dims=dims)
+                    .to(torch.float16 if want16 else torch.float32).cpu().numpy()
+                )
+                out = torch.from_numpy(self.model.run(None, flipped)[0])
+                probs = probs + torch.softmax(
+                    out.float() / meta["temperature"], dim=1)
+            probs = probs / len(_TTA_FLIPS)
+            logits = torch.log(probs.clamp_min(1e-12)) * meta["temperature"]
+            return logits, (outs[1] if len(outs) > 1 else None)
+
+        if meta["task"] == "classification":
+            # Second output, when present, is the attention weights.
+            return outs[0], (outs[1] if len(outs) > 1 else None)
+        return tuple(outs) if len(outs) > 1 else outs[0]
+
     def _forward(self, batch: torch.Tensor, n_instances: int, tta: bool):
         meta = self.meta
+        if self.backend == "onnx":
+            return self._onnx_run(batch, n_instances, tta)
         with torch.inference_mode():
             batch = batch.to(self.device, dtype=self.dtype)
             if self.device == "cuda":
