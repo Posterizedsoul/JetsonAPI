@@ -71,22 +71,42 @@ def loadavg() -> list[float] | None:
         return None
 
 
-def gpu_load() -> float | None:
-    """Jetson GPU busy %, from sysfs (0–1000 per mille). Path varies by board,
-    so try the known ones then fall back to any *gpu*/load node."""
+# Resolved once. _UNSET means "haven't looked yet"; None means "looked, not
+# found" so we don't re-scan sysfs on every 5s refresh.
+_UNSET = object()
+_gpu_path: object = _UNSET
+
+
+def _find_gpu_load_path() -> str | None:
+    """Locate the Jetson GPU load node. Only shallow, bounded globs — a
+    recursive walk of /sys/devices takes long enough to look like a hang, and
+    this runs on every refresh."""
     candidates = [
         "/sys/devices/platform/gpu.0/load",
         "/sys/devices/gpu.0/load",
-        "/sys/devices/platform/17000000.gpu/load",
-        "/sys/devices/17000000.gpu/load",
+        "/sys/devices/platform/17000000.ga10b/load",   # Orin
+        "/sys/devices/17000000.ga10b/load",
+        "/sys/devices/platform/17000000.gv11b/load",   # Xavier
     ]
-    candidates += [p for p in glob.glob("/sys/devices/**/load", recursive=True)
-                   if "gpu" in p]
+    for pattern in ("/sys/devices/platform/*/load",
+                    "/sys/devices/gpu.*/load",
+                    "/sys/class/devfreq/*/device/load"):
+        candidates.extend(glob.glob(pattern))
     for path in candidates:
-        val = _read_int(path)
-        if val is not None:
-            return round(val / 10, 1)
+        if _read_int(path) is not None:
+            return path
     return None
+
+
+def gpu_load() -> float | None:
+    """Jetson GPU busy %, from sysfs (0–1000 per mille)."""
+    global _gpu_path
+    if _gpu_path is _UNSET:
+        _gpu_path = _find_gpu_load_path()
+    if _gpu_path is None:
+        return None
+    val = _read_int(_gpu_path)          # type: ignore[arg-type]
+    return round(val / 10, 1) if val is not None else None
 
 
 def temperatures() -> list[dict]:

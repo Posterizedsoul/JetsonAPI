@@ -131,11 +131,23 @@ def perf_page(request: Request, admin: dict = Depends(require_web_admin)):
 
 @router.get("/ui/perf/data", response_class=HTMLResponse)
 def perf_data(request: Request, admin: dict = Depends(require_web_admin)):
-    return templates.TemplateResponse(request, "_perf.html", {
-        "sys": metrics.system(),
-        "models": metrics.model_performance(),
-        "tp": metrics.throughput(),
-    })
+    # HTMX does not swap on a 4xx/5xx, so an unhandled error here would leave
+    # the page reading "Loading metrics…" forever. Always return 200 with
+    # whatever we managed to collect, and say so when a part failed.
+    # Defaults carry the sub-keys the template walks into, so a failed
+    # collection renders blanks instead of raising UndefinedError.
+    ctx: dict = {
+        "sys": {"memory": {}, "disk": {}, "temperatures": []},
+        "models": [], "tp": None, "errors": [],
+    }
+    for key, fn in (("sys", metrics.system),
+                    ("models", metrics.model_performance),
+                    ("tp", metrics.throughput)):
+        try:
+            ctx[key] = fn()
+        except Exception as exc:
+            ctx["errors"].append(f"{key}: {exc}")
+    return templates.TemplateResponse(request, "_perf.html", ctx)
 
 
 # ----------------------------------------------------------------- dashboard --
