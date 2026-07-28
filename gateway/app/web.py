@@ -224,6 +224,36 @@ async def ui_register(
         return _models_fragment(request, f"Rejected: {detail}", "err")
 
 
+@router.post("/ui/models/try", response_class=HTMLResponse)
+async def ui_try_model(
+    request: Request, admin: dict = Depends(require_web_admin),
+    images: list[UploadFile] = File(...), model_uuid: str = Form(...),
+    tta: bool = Form(False),
+):
+    """Run one model on uploaded image(s) and show the result. Stores nothing —
+    this is for checking a model works, not for capturing field data."""
+    rows = db.query(
+        "SELECT id, model_id, version, task, archive_key, classes, meta"
+        " FROM models WHERE id = %s", (model_uuid,)
+    )
+    if not rows:
+        return templates.TemplateResponse(
+            request, "_try_result.html", {"error": "No such model."})
+    model = rows[0]
+    try:
+        if not runner.is_loaded(str(model["id"])):
+            routes.load_model_row(model, str(model["id"]))
+        payload = [await f.read() for f in images]
+        out = runner.predict(payload, tta=tta)
+        return templates.TemplateResponse(request, "_try_result.html", {
+            "out": out, "model": model, "n_images": len(payload),
+            "backend": runner.backend, "provider": runner.provider, "error": None,
+        })
+    except Exception as exc:
+        return templates.TemplateResponse(
+            request, "_try_result.html", {"error": str(exc)})
+
+
 @router.post("/ui/models/{model_uuid}/{action}", response_class=HTMLResponse)
 def ui_model_action(
     request: Request, model_uuid: str, action: str,

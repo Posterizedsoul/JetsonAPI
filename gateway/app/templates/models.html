@@ -9,6 +9,43 @@
   {% include "_models_table.html" %}
 </div>
 
+<section class="bg-white rounded-lg border border-slate-200 p-4 mb-6">
+  <h2 class="text-sm font-semibold mb-1">Try a model</h2>
+  <p class="text-xs text-slate-500 mb-3">
+    Upload an image and see what the model says. Nothing is stored — this is for
+    checking a model works, not for capturing field data.
+  </p>
+  <form hx-post="/ui/models/try" hx-target="#try-result" hx-swap="innerHTML"
+        hx-encoding="multipart/form-data" class="grid sm:grid-cols-2 gap-3">
+    <label class="text-sm">Model
+      <select name="model_uuid" required
+              class="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm">
+        {% for m in models %}
+        <option value="{{ m.id }}" {{ 'selected' if m.active }}>
+          {{ m.model_id }}:{{ m.version }} ({{ m.task }}){{ ' — active' if m.active }}
+        </option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="text-sm"
+           title="Multi-view models accept several images of the same subject; select them all at once.">
+      Image(s)
+      <input type="file" name="images" required multiple accept="image/*"
+             class="mt-1 w-full text-sm">
+    </label>
+    <label class="text-sm flex items-center gap-2"
+           title="Average over 4 flip variants: more accurate, roughly 4x the compute.">
+      <input type="checkbox" name="tta" value="true"> Test-time augmentation
+    </label>
+    <div class="sm:col-span-2">
+      <button class="rounded-md bg-slate-900 text-white px-4 py-2 text-sm font-medium hover:bg-slate-700">
+        Predict <span data-loading>…</span>
+      </button>
+    </div>
+  </form>
+  <div id="try-result" class="mt-4"></div>
+</section>
+
 <section class="bg-white rounded-lg border border-slate-200 p-4">
   <h2 class="text-sm font-semibold mb-3">Register an archive</h2>
   <p class="text-xs text-slate-500 mb-3">

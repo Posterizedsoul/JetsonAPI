@@ -125,6 +125,7 @@ request body.
 | POST | `/v1/models/{uuid}/activate` | admin | make it the active model for its task |
 | POST | `/v1/models/{uuid}/load` | admin | load into memory |
 | POST | `/v1/models/{uuid}/unload` | admin | free memory |
+| POST | `/v1/predict` | any | run a model on image(s), return the result, store nothing |
 | POST | `/v1/boards` | ingest | upload a board and its views |
 | GET | `/v1/boards` | any | review queue, filtered and sorted |
 | GET | `/v1/boards/{board_id}` | any | one board with views and predictions |

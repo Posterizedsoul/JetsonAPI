@@ -323,6 +323,66 @@ def run_server_inference(board_uuid: str, task: str, replay_job: str | None = No
         return None
 
 
+@router.post("/predict")
+async def predict(
+    images: list[UploadFile] = File(...),
+    task: str = Form("classification"),
+    model_version: str | None = Form(None),
+    tta: bool = Form(False),
+    _: dict = Depends(auth.require_key),
+) -> dict:
+    """Run a model on uploaded image(s) and return the result immediately.
+
+    Stateless: nothing is stored, no board row, no prediction row. This is the
+    "does my model work" path and the one to point a client at when it only
+    wants an answer. Use POST /v1/boards when the capture should be kept.
+
+    Send 1..max_views images for a multi-view model; a single image is fine.
+    """
+    if model_version:
+        rows = db.query(
+            "SELECT id, model_id, version, task, archive_key, classes, meta"
+            " FROM models WHERE model_id = %s OR version = %s OR id::text = %s"
+            " ORDER BY registered_at DESC LIMIT 1",
+            (model_version, model_version, model_version),
+        )
+        model = rows[0] if rows else None
+    else:
+        model = active_model(task)
+    if not model:
+        raise HTTPException(
+            404,
+            f"no active model for task {task!r}. Register one and activate it, "
+            "or pass model_version.",
+        )
+
+    if not runner.is_loaded(str(model["id"])):
+        load_model_row(model, str(model["id"]))
+
+    payload = [await f.read() for f in images]
+    try:
+        out = runner.predict(payload, tta=tta)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+    return {
+        "model_id": model["model_id"],
+        "model_version": model["version"],
+        "task": model["task"],
+        "backend": runner.backend,
+        "provider": runner.provider,
+        "latency_ms": out.get("latency_ms"),
+        "label": out.get("label"),
+        "confidence": out.get("confidence"),
+        "probs": out.get("probs"),
+        "margin": out.get("margin"),
+        "view_attention": out.get("view_attention"),
+        "detections": out.get("detections"),
+        "coverage": out.get("coverage"),
+        "tta": out.get("tta"),
+    }
+
+
 @router.get("/boards")
 def list_boards(
     limit: int = 50,

@@ -1,0 +1,75 @@
+{% if error %}
+<div class="text-sm rounded-md px-3 py-2 text-red-800 bg-red-100">{{ error }}</div>
+{% else %}
+<div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
+  <div class="flex items-baseline justify-between mb-3">
+    <div>
+      <span class="text-xs text-slate-500">{{ model.model_id }}:{{ model.version }}</span>
+      <span class="text-xs bg-slate-200 rounded px-1.5 py-0.5 ml-1">{{ model.task }}</span>
+    </div>
+    <span class="text-xs text-slate-400">
+      {{ out.latency_ms }} ms · {{ n_images }} image{{ '' if n_images == 1 else 's' }}
+      · {{ backend }}{{ ' / ' ~ provider if provider else '' }}{{ ' · TTA' if out.tta else '' }}
+    </span>
+  </div>
+
+  {% if out.probs %}
+  <div class="mb-1">
+    <span class="text-2xl font-semibold">{{ out.label }}</span>
+    <span class="text-sm text-slate-500 ml-2">{{ '%.1f' % (out.confidence * 100) }}% confident</span>
+  </div>
+  {# Full distribution, not just the argmax — a 51/49 call and a 99/1 call
+     are very different things and the top label alone hides that. #}
+  <div class="space-y-1 mt-3">
+    {% for name, p in out.probs | dictsort(by='value', reverse=true) %}
+    <div class="flex items-center gap-2 text-sm">
+      <span class="w-24 truncate {{ 'font-medium' if name == out.label }}">{{ name }}</span>
+      <div class="flex-1 h-2 rounded bg-slate-200 overflow-hidden">
+        <div class="h-full {{ 'bg-emerald-500' if name == out.label else 'bg-slate-400' }}"
+             style="width: {{ (p * 100) | round(1) }}%"></div>
+      </div>
+      <span class="w-14 text-right tabular-nums text-slate-600">{{ '%.3f' % p }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% if out.margin is not none %}
+  <p class="text-xs text-slate-400 mt-2"
+     title="Gap between the top two classes. Small means the model is torn.">
+    top-two margin: {{ '%.3f' % out.margin }}{{ ' — narrow call' if out.margin < 0.15 else '' }}
+  </p>
+  {% endif %}
+  {% endif %}
+
+  {% if out.detections %}
+  <div class="text-sm">
+    <div class="font-medium mb-1">{{ out.detections | length }} detection(s)</div>
+    <table class="w-full text-xs">
+      <thead class="text-slate-400 text-left"><tr><th>Class</th><th>Score</th><th>Box (x1,y1,x2,y2)</th></tr></thead>
+      <tbody>
+        {% for d in out.detections[:12] %}
+        <tr class="border-t"><td class="py-0.5">{{ d.label }}</td>
+          <td class="tabular-nums">{{ '%.3f' % d.score }}</td>
+          <td class="tabular-nums text-slate-500">{{ d.box | join(', ') }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  {% if out.coverage %}
+  <div class="text-sm">
+    <div class="font-medium mb-1">Mask coverage</div>
+    {% for name, frac in out.coverage | dictsort(by='value', reverse=true) %}
+    <div class="text-xs">{{ name }}: {{ '%.1f' % (frac * 100) }}%</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if out.view_attention %}
+  <p class="text-xs text-slate-500 mt-3"
+     title="How much each submitted image drove the result, from the model's attention pooler.">
+    view attention: {{ out.view_attention | join(' · ') }}
+  </p>
+  {% endif %}
+</div>
+{% endif %}

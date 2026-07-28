@@ -58,6 +58,20 @@ Only one model fits in memory at a time; loading another unloads the first.</p>
 <p class="text-amber-700">The key is shown once, right after you create it. Copy it then.</p>
 {% endcall %}
 
+{% call card("3b · Just predict on an image (no storage)") %}
+<p>Fastest check that a model works: <a href="/ui/models" class="text-blue-700 underline">Models</a>
+→ <b>Try a model</b>, pick a file, hit Predict. Nothing is stored.</p>
+<p>Same thing over HTTP — returns the answer immediately:</p>
+<code class="{{ code }}">curl -X POST http://THIS-HOST:8000/v1/predict \
+  -H "X-API-Key: YOUR_KEY" \
+  -F "images=@photo.jpg" \
+  -F "task=classification"</code>
+<p class="text-slate-500">Uses the active model for that task. Pass
+<code>model_version=</code> to target a specific one, <code>tta=true</code> for
+the slower, more accurate flip ensemble. Send several <code>images=</code> parts
+for a multi-view model.</p>
+{% endcall %}
+
 {% call card("4 · Upload a board (what your client codes against)") %}
 <p>Multipart POST. 1–3 views, one lighting label each, optional edge prediction
 and metadata. Idempotent on board id + image bytes, so retries never duplicate.</p>
