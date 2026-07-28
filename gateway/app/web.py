@@ -219,7 +219,8 @@ async def ui_register(
                f"({info['task']}, {len(info['classes'])} classes)."
         return _models_fragment(request, note, "ok")
     except Exception as exc:
-        detail = getattr(exc, "detail", str(exc))
+        # HTTPException details already read "rejected: ..." — don't stutter.
+        detail = str(getattr(exc, "detail", exc)).removeprefix("rejected: ")
         return _models_fragment(request, f"Rejected: {detail}", "err")
 
 

@@ -51,11 +51,25 @@ def backend_of(archive_path: str | Path) -> str:
     return "onnx" if str(archive_path).lower().endswith(".onnx") else "torchscript"
 
 
+def _onnx_runtime():
+    """Import ONNX Runtime, turning a missing install into a clear message
+    instead of a raw ModuleNotFoundError surfacing as a 500."""
+    try:
+        import onnxruntime as ort
+    except ImportError as exc:
+        raise ManifestError(
+            "ONNX Runtime is not installed in the gateway container, so .onnx "
+            "models cannot be served. Rebuild the image: "
+            "sudo ./setup-jetson.sh deploy"
+        ) from exc
+    return ort
+
+
 def _onnx_embedded_metadata(archive_path: str | Path) -> str:
     """ONNX's equivalent of TorchScript's _extra_files is metadata_props, a
     string->string map on the model. We look for a 'metadata.json' key so the
     same manifest travels inside either archive format."""
-    import onnxruntime as ort
+    ort = _onnx_runtime()
 
     try:
         opts = ort.SessionOptions()
@@ -288,7 +302,7 @@ class ModelRunner:
         return meta
 
     def _load_onnx(self, archive_path, fallback_meta: str | None) -> dict:
-        import onnxruntime as ort
+        ort = _onnx_runtime()
 
         raw = _onnx_embedded_metadata(archive_path) or (fallback_meta or "")
         meta = parse_metadata(raw)
