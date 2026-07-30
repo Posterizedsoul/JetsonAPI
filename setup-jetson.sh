@@ -606,6 +606,10 @@ DOCKER_RUNTIME=nvidia
 DEVICE=
 EOF"
         run chmod 600 "$env_file"
+        # Written by root, but the operator runs `docker compose` as themselves
+        # (they're in the docker group). Without this, every non-sudo compose
+        # command dies with "open .env: permission denied".
+        run chown "$(real_user):$(real_user)" "$env_file"
         ok "wrote .env (base image: $base_img)"
     fi
 
@@ -657,6 +661,8 @@ EOF"
         if [[ -n $key ]]; then
             printf '%s\n' "$key" >"$marker"
             chmod 600 "$marker"
+            # Same reason as .env: readable by the operator without sudo.
+            chown "$(real_user):$(real_user)" "$marker" 2>/dev/null || true
             ok "admin API key created and saved to $marker"
         else
             warn "could not create the admin key automatically"
