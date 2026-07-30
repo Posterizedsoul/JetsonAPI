@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, File, Form, Header, Request, UploadFile
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from app import auth, db, metrics, routes
+from app import auth, config, db, metrics, routes
 from app.runner import runner
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -51,7 +51,7 @@ def login_page(request: Request, t: str | None = None):
         if key and auth.admin_from_cookie(key):
             resp = RedirectResponse("/ui", status_code=303)
             resp.set_cookie(auth.COOKIE_NAME, key, httponly=True,
-                            samesite="lax", max_age=30 * 86400)
+                            samesite="lax", max_age=config.SESSION_DAYS * 86400)
             return resp
         return templates.TemplateResponse(
             request, "login.html",
@@ -100,7 +100,7 @@ def login(request: Request, api_key: str = Form(...)):
         )
     resp = RedirectResponse("/ui", status_code=303)
     resp.set_cookie(
-        auth.COOKIE_NAME, api_key, httponly=True, samesite="lax", max_age=30 * 86400
+        auth.COOKIE_NAME, api_key, httponly=True, samesite="lax", max_age=config.SESSION_DAYS * 86400
     )
     return resp
 

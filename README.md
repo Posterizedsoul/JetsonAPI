@@ -297,6 +297,28 @@ installs the arm64 plugin binary to
 `(model_id, version)` is unique. Bump the version — this is deliberate, so a
 model version's prediction history can never be silently redefined.
 
+### Leaving the box unattended (and not getting locked out)
+
+Three things decide whether a remote Jetson is still reachable weeks later:
+
+1. **Tailscale key expiry — the one that actually bites.** Node keys expire
+   (~180 days default). When one does, the machine drops off the tailnet and
+   can only be re-authenticated from its own console, meaning a physical trip.
+   It cannot be turned off from the CLI. Do it once at
+   [login.tailscale.com/admin/machines](https://login.tailscale.com/admin/machines)
+   → your machine → **⋯ → Disable key expiry**. `setup-jetson.sh` checks this
+   and warns on every `deploy` and `access` until it's disabled.
+2. **Browser session.** The admin cookie lasts `SESSION_DAYS` (default 3650).
+   Set it lower in `.env` if the box is ever shared.
+3. **Power loss / reboot.** Docker is enabled at boot and every service is
+   `restart: unless-stopped`, so the stack comes back by itself. Confirm with
+   `sudo systemctl is-enabled docker` (should print `enabled`).
+
+Also worth having before you travel: `tailscale up --ssh` (the setup script
+now passes it) gives you `tailscale ssh user@jetson` — a shell over the tailnet
+even if the web UI is wedged. And keep a copy of the admin key off the box;
+it's only stored hashed, so a lost key means SSHing in to mint a new one.
+
 ### ONNX model won't register, or runs on CPU
 
 Registration reads the manifest from inside the file. TorchScript archives from

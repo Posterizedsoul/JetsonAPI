@@ -14,3 +14,9 @@ DEVICE = os.environ.get("DEVICE", "")
 
 # Long edge of the UI thumbnail. Previews are JPEG; originals never are.
 PREVIEW_MAX_PX = int(os.environ.get("PREVIEW_MAX_PX", "1600"))
+
+# How long an admin browser session stays valid. Default ~10 years: the box
+# lives on a private tailnet, gets left unattended for weeks at a time, and
+# being logged out while away from it is a worse outcome than a long cookie.
+# Lower it if the server ever faces more than its operator.
+SESSION_DAYS = int(os.environ.get("SESSION_DAYS", "3650"))

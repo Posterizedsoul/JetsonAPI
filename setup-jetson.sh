@@ -517,6 +517,39 @@ step_tailscale() {
         warn "not logged in yet — run: sudo tailscale up"
         info "this is the only remote access path; do not forward ports"
     fi
+    check_key_expiry
+}
+
+# The one thing that actually locks you out of an unattended box: Tailscale
+# node keys expire (~180 days by default). When that happens the machine drops
+# off the tailnet and can only be re-authenticated from the console — i.e. you
+# have to physically go to it. Cannot be disabled from the CLI; it is a
+# per-machine setting in the admin console, so warn loudly and link it.
+check_key_expiry() {
+    tailscale status >/dev/null 2>&1 || return 0
+    local expiry
+    expiry=$(tailscale status --json 2>/dev/null | python3 -c '
+import json, sys
+try:
+    print(json.load(sys.stdin).get("Self", {}).get("KeyExpiry") or "")
+except Exception:
+    print("")
+' 2>/dev/null || echo "")
+
+    if [[ -z $expiry ]]; then
+        ok "Tailscale key expiry is DISABLED — this box stays reachable"
+        return 0
+    fi
+    warn "Tailscale key EXPIRES: $expiry"
+    cat <<EOF
+       If that date passes while you are away, the Jetson silently leaves your
+       tailnet and you will need PHYSICAL access to log it back in.
+
+       Disable it now (30 seconds, one time):
+         1. https://login.tailscale.com/admin/machines
+         2. find "$(hostname -s 2>/dev/null || echo this machine)"
+         3. ... menu -> Disable key expiry
+EOF
 }
 
 # ------------------------------------------------------------------- deploy --
@@ -651,8 +684,10 @@ ensure_tailscale() {
     info "and this finishes on its own. Press Ctrl-C to skip and do it later."
     # Not wrapped in run(): the auth URL must reach the terminal, not the log.
     # --hostname gives a friendly MagicDNS name (http://jetson:8000/ui).
-    tailscale up --hostname="$(hostname -s 2>/dev/null || echo jetson)" \
-        || warn "Tailscale not connected — finish later with: sudo tailscale up"
+    # --ssh gives a shell over the tailnet, so a broken web UI on an unattended
+    # box is recoverable without physically going to it.
+    tailscale up --ssh --hostname="$(hostname -s 2>/dev/null || echo jetson)" \
+        || warn "Tailscale not connected — finish later with: sudo tailscale up --ssh"
 }
 
 # Everything needed to actually use the box, in one block. Printed at the end
@@ -701,7 +736,14 @@ print_access() {
     printf '%s│%s  Logs           : cd %s && docker compose logs -f gateway\n' \
         "$BOLD$BLUE" "$RESET" "$SCRIPT_DIR"
     printf '%s│%s  Restart        : sudo %s deploy\n' "$BOLD$BLUE" "$RESET" "$0"
+    if [[ -n $ts ]]; then
+        printf '%s│%s  Shell remotely : tailscale ssh %s@%s\n' "$BOLD$BLUE" "$RESET" \
+            "$(real_user)" "$(hostname -s 2>/dev/null || echo jetson)"
+    fi
     printf '%s└─────────────────────────────────────────────────────%s\n' "$BOLD$BLUE" "$RESET"
+
+    # Leaving the box unattended is exactly when an expiring node key bites.
+    check_key_expiry
 
     # Scan-to-log-in QR: no typing the key on a borrowed machine. Needs the
     # gateway up, an admin key, and a reachable address (Tailscale, else LAN).
