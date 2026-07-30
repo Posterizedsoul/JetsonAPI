@@ -1,0 +1,47 @@
+{# Log tail fragment, polled by logs.html. #}
+{% if errors %}
+<section class="mb-4">
+  <h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-1"
+      title="Background failures recorded in the database — these do not appear in the log stream.">
+    Recorded errors
+  </h2>
+  <div class="bg-white rounded-lg border border-red-200 divide-y">
+    {% for e in errors %}
+    <div class="px-3 py-2">
+      <div class="flex justify-between gap-3">
+        <span class="font-mono text-xs text-red-700">{{ e.kind }}</span>
+        <span class="text-xs text-slate-400 whitespace-nowrap">
+          {{ e.created_at.strftime("%m-%d %H:%M:%S") }}</span>
+      </div>
+      <div class="text-xs text-slate-700 break-words">{{ e.detail }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<div class="rounded-lg border border-slate-200 bg-slate-900 overflow-hidden">
+  {% if rows %}
+  <div class="max-h-[32rem] overflow-y-auto font-mono text-xs leading-relaxed">
+    {% for r in rows %}
+    {% set colour =
+        'text-red-400'    if r.level in ('ERROR', 'CRITICAL') else
+        'text-amber-300'  if r.level == 'WARNING' else
+        'text-slate-500'  if r.level == 'DEBUG' else 'text-slate-300' %}
+    <div class="px-3 py-0.5 flex gap-2 hover:bg-slate-800">
+      <span class="text-slate-600 whitespace-nowrap">{{ r.ts.strftime("%H:%M:%S") }}</span>
+      <span class="{{ colour }} w-16 shrink-0">{{ r.level }}</span>
+      <span class="text-slate-300 break-all">{{ r.message }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="px-3 py-6 text-sm text-slate-500">
+    Nothing matching. The buffer fills as requests come in — try loading another
+    page, or widen the filter.
+  </div>
+  {% endif %}
+</div>
+<div class="text-xs text-slate-400 mt-2">
+  showing {{ rows | length }} of {{ total }} buffered · newest first
+</div>

@@ -80,17 +80,25 @@ _gpu_path: object = _UNSET
 def _find_gpu_load_path() -> str | None:
     """Locate the Jetson GPU load node. Only shallow, bounded globs — a
     recursive walk of /sys/devices takes long enough to look like a hang, and
-    this runs on every refresh."""
+    this runs on every refresh.
+
+    The node moved between generations: gpu.0 on older boards, a
+    <addr>.gpu / <addr>.ga10b platform device on Orin (sometimes under
+    bus@0), and devfreq exposes it too. Try them all, cheaply."""
     candidates = [
         "/sys/devices/platform/gpu.0/load",
         "/sys/devices/gpu.0/load",
-        "/sys/devices/platform/17000000.ga10b/load",   # Orin
-        "/sys/devices/17000000.ga10b/load",
-        "/sys/devices/platform/17000000.gv11b/load",   # Xavier
     ]
-    for pattern in ("/sys/devices/platform/*/load",
-                    "/sys/devices/gpu.*/load",
-                    "/sys/class/devfreq/*/device/load"):
+    for pattern in (
+        "/sys/devices/platform/*.gpu/load",
+        "/sys/devices/platform/*.ga10b/load",       # Orin
+        "/sys/devices/platform/*.gv11b/load",       # Xavier
+        "/sys/devices/platform/bus@0/*.gpu/load",   # JetPack 6 device tree
+        "/sys/devices/platform/bus@0/*.ga10b/load",
+        "/sys/devices/platform/*/load",
+        "/sys/class/devfreq/*/device/load",
+        "/sys/class/devfreq/*/load",
+    ):
         candidates.extend(glob.glob(pattern))
     for path in candidates:
         if _read_int(path) is not None:
@@ -110,9 +118,16 @@ def gpu_load() -> float | None:
 
 
 def temperatures() -> list[dict]:
-    """Every thermal zone that reports a sane value, e.g. CPU-therm, GPU-therm."""
+    """Every thermal zone that reports a sane value, e.g. CPU-therm, GPU-therm.
+
+    /sys/class/thermal holds symlinks; if those don't resolve inside the
+    container, the real directories under /sys/devices/virtual/thermal do.
+    """
+    zones = sorted(glob.glob("/sys/class/thermal/thermal_zone*"))
+    if not zones:
+        zones = sorted(glob.glob("/sys/devices/virtual/thermal/thermal_zone*"))
     out = []
-    for zone in sorted(glob.glob("/sys/class/thermal/thermal_zone*")):
+    for zone in zones:
         milli = _read_int(f"{zone}/temp")
         try:
             with open(f"{zone}/type") as f:

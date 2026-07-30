@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, File, Form, Header, Request, UploadFile
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from app import auth, config, db, metrics, routes
+from app import auth, config, db, logbuffer, metrics, routes
 from app.runner import runner
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -116,6 +116,42 @@ def logout():
 def help_page(request: Request, admin: dict = Depends(require_web_admin)):
     return templates.TemplateResponse(request, "help.html", {
         "admin": admin, "nav": "help",
+    })
+
+
+# ----------------------------------------------------------------------- logs --
+
+@router.get("/ui/logs", response_class=HTMLResponse)
+def logs_page(request: Request, admin: dict = Depends(require_web_admin)):
+    return templates.TemplateResponse(request, "logs.html", {
+        "admin": admin, "nav": "logs",
+    })
+
+
+@router.get("/ui/logs/data", response_class=HTMLResponse)
+def logs_data(request: Request, admin: dict = Depends(require_web_admin),
+              level: str = "ALL", q: str = "", limit: int = 200):
+    rows = logbuffer.records(level=level, contains=q or None, limit=limit)
+    # Background failures are recorded in the DB rather than logged, so show
+    # them alongside — otherwise a failed inference is invisible here.
+    try:
+        errs = db.query(
+            "SELECT kind, detail, created_at FROM errors"
+            " ORDER BY created_at DESC LIMIT 20"
+        )
+    except Exception:
+        errs = []
+    return templates.TemplateResponse(request, "_logs.html", {
+        "rows": rows, "errors": errs, "level": level, "q": q,
+        "total": len(logbuffer._records),
+    })
+
+
+@router.post("/ui/logs/clear", response_class=HTMLResponse)
+def logs_clear(request: Request, admin: dict = Depends(require_web_admin)):
+    logbuffer.clear()
+    return templates.TemplateResponse(request, "_logs.html", {
+        "rows": [], "errors": [], "level": "ALL", "q": "", "total": 0,
     })
 
 

@@ -3,11 +3,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 
-from app import db, routes, storage, web
+from app import db, logbuffer, routes, storage, web
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    logbuffer.install()
     db.pool.open(wait=True, timeout=30)
     db.migrate()
     storage.ensure_bucket()

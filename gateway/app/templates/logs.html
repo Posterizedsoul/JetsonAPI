@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Logs{% endblock %}
+{% block body %}
+<div class="flex items-baseline justify-between mb-1">
+  <h1 class="text-lg font-semibold">Logs</h1>
+  <label class="text-xs text-slate-500 flex items-center gap-1"
+         title="Re-fetch every 3 seconds.">
+    <input type="checkbox" id="tail" checked
+           onchange="const e=document.getElementById('logs');
+                     e.setAttribute('hx-trigger', this.checked ? 'load, every 3s' : 'load');
+                     htmx.process(e);">
+    live (3s)
+  </label>
+</div>
+<p class="text-sm text-slate-500 mb-4">
+  Live tail of the gateway. Last {{ 800 }} lines are kept in memory — for older
+  history use <code>docker compose logs gateway</code>.
+</p>
+
+<form class="flex flex-wrap gap-2 items-end mb-3"
+      hx-get="/ui/logs/data" hx-target="#logs" hx-swap="innerHTML"
+      hx-trigger="change, keyup delay:400ms from:input[name='q']">
+  <label class="text-sm">Level
+    <select name="level" class="mt-1 rounded border border-slate-300 px-2 py-1.5 text-sm">
+      {% for lv in ["ALL", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] %}
+      <option value="{{ lv }}">{{ lv }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label class="text-sm flex-1 min-w-48">Search
+    <input name="q" placeholder="filter by text…"
+           class="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm">
+  </label>
+  <label class="text-sm">Lines
+    <select name="limit" class="mt-1 rounded border border-slate-300 px-2 py-1.5 text-sm">
+      <option>200</option><option>500</option><option>800</option>
+    </select>
+  </label>
+  <button type="button"
+          class="rounded-md bg-slate-100 px-3 py-2 text-sm hover:bg-slate-200"
+          hx-post="/ui/logs/clear" hx-target="#logs" hx-swap="innerHTML"
+          hx-confirm="Clear the in-memory log buffer?">Clear</button>
+</form>
+
+<div id="logs" hx-get="/ui/logs/data" hx-trigger="load, every 3s" hx-swap="innerHTML">
+  <div class="text-sm text-slate-400">Loading logs…</div>
+</div>
+{% endblock %}

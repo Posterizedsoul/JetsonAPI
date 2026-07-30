@@ -465,7 +465,12 @@ class ModelRunner:
             return self._onnx_run(batch, n_instances, tta)
         with torch.inference_mode():
             batch = batch.to(self.device, dtype=self.dtype)
-            if self.device == "cuda":
+            # channels_last is defined for rank-4 NCHW only. A multi-view board
+            # batch is (1, V*K, 3, H, W) — rank 5 — and asking for the format
+            # there raises "required rank 4 tensor to use channels_last".
+            # The model folds views into the batch internally, so the encoder
+            # still sees 4-D; we just can't pre-format the outer tensor.
+            if self.device == "cuda" and batch.dim() == 4:
                 batch = batch.contiguous(memory_format=torch.channels_last)
 
             # Only real instances are sent, so every slot is a real one. The
