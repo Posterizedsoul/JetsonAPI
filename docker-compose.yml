@@ -55,6 +55,7 @@ services:
       S3_BUCKET: ${S3_BUCKET:-boards}
       MODEL_DIR: /models
       DEVICE: ${DEVICE:-}
+      SESSION_DAYS: ${SESSION_DAYS:-3650}
     volumes:
       - ${DATA_ROOT:-./data}/models:/models
     ports:
