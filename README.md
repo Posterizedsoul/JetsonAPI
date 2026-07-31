@@ -310,9 +310,16 @@ Three things decide whether a remote Jetson is still reachable weeks later:
    and warns on every `deploy` and `access` until it's disabled.
 2. **Browser session.** The admin cookie lasts `SESSION_DAYS` (default 3650).
    Set it lower in `.env` if the box is ever shared.
-3. **Power loss / reboot.** Docker is enabled at boot and every service is
-   `restart: unless-stopped`, so the stack comes back by itself. Confirm with
-   `sudo systemctl is-enabled docker` (should print `enabled`).
+3. **Power loss / reboot.** `jetsonapi.service` runs `docker compose up -d` at
+   every boot, so the stack returns even if it was left stopped or `down`ed —
+   `restart: unless-stopped` alone only revives containers that still exist.
+   Confirm both:
+   ```bash
+   systemctl is-enabled docker jetsonapi
+   ```
+   Manual control: `sudo systemctl start|stop|status jetsonapi`. Note that
+   `sudo systemctl stop jetsonapi` is the way to take the stack down
+   deliberately — a bare `docker compose down` will be undone at next boot.
 
 Also worth having before you travel: `tailscale up --ssh` (the setup script
 now passes it) gives you `tailscale ssh user@jetson` — a shell over the tailnet

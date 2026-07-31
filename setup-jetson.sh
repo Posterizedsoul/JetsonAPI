@@ -495,6 +495,49 @@ json.dump(c, open(p,'w'), indent=2)
     fi
 }
 
+# ------------------------------------------------------------------ service --
+
+step_service() {
+    need_root
+    step "Boot service"
+    # `restart: unless-stopped` only revives containers that still exist, and
+    # it stays off after an explicit `docker compose stop`. A `docker compose
+    # down` before a reboot would therefore leave the box serving nothing.
+    # This unit runs `up -d` at every boot, so the stack is present regardless
+    # of what state it was left in.
+    local mount_dep=""
+    if [[ $DATA_DIR == "$NVME_MOUNT"/* ]]; then
+        # Postgres and MinIO write here; starting before the disk is mounted
+        # would silently create their data on the boot device instead.
+        mount_dep="RequiresMountsFor=$NVME_MOUNT"
+    fi
+
+    run_sh "cat >/etc/systemd/system/jetsonapi.service <<EOF
+[Unit]
+Description=JetsonAPI inference server
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+$mount_dep
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=$SCRIPT_DIR
+ExecStart=/usr/bin/docker compose up -d
+ExecStop=/usr/bin/docker compose stop
+# First start after an image change can be slow; never time out on it.
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target
+EOF"
+    run systemctl daemon-reload
+    run systemctl enable jetsonapi.service
+    ok "jetsonapi.service enabled — the stack starts on every boot"
+    info "manual control: sudo systemctl start|stop|status jetsonapi"
+}
+
 # ---------------------------------------------------------------- tailscale --
 
 step_tailscale() {
@@ -789,6 +832,7 @@ step_verify() {
     check "compose v2"          "docker compose version" || failed=1
     check "nvidia default rt"   "docker info --format '{{.DefaultRuntime}}' | grep -q nvidia" || failed=1
     check "tailscale up"        "tailscale status" || true
+    check "starts on boot"       "systemctl is-enabled jetsonapi.service" || failed=1
     check "gateway healthy"     "curl -fsS --max-time 5 http://localhost:8000/health | grep -q '\"status\":\"ok\"'" || failed=1
 
     echo
@@ -839,6 +883,7 @@ Steps:
   docker       docker + Compose v2 + nvidia as DEFAULT runtime
   tailscale    install and enable
   deploy       generate .env, build, start, wait for health, mint admin key
+  service      install the systemd unit so the stack starts at boot
   access       print IPs, UI/docs URLs, and the admin key
   verify       check everything
 
@@ -854,7 +899,7 @@ Env: NVME_MOUNT=$NVME_MOUNT DATA_DIR=$DATA_DIR SWAP_GB=$SWAP_GB NVME_DEV=$NVME_D
 EOF
 }
 
-DEFAULT_STEPS=(preflight base jetpack power headless nvme swap docker tailscale deploy verify)
+DEFAULT_STEPS=(preflight base jetpack power headless nvme swap docker tailscale deploy service verify)
 
 main() {
     local steps=()
@@ -895,6 +940,7 @@ main() {
             docker)      step_docker ;;
             tailscale)   step_tailscale ;;
             deploy)      step_deploy ;;
+            service)     step_service ;;
             access)      print_access ;;
             verify)      step_verify || warn "some verification checks failed" ;;
             nvme-format) step_nvme_format ;;
