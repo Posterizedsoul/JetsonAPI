@@ -5,6 +5,17 @@
 {% set code = "block bg-slate-900 text-slate-100 rounded-md px-3 py-2 text-xs font-mono overflow-x-auto whitespace-pre mt-2" %}
 {% set link = "text-blue-700 underline underline-offset-2" %}
 
+<!-- Shared arrowhead for every diagram below. Defined once, in its own hidden
+     SVG, so no diagram depends on another one being rendered first. -->
+<svg width="0" height="0" aria-hidden="true" class="absolute">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+</svg>
+
 <h1 class="text-2xl font-semibold mb-1">How to use this server</h1>
 <p class="text-slate-500 mb-6">
   Upload a model, point images at it, get predictions. Hover any label in the
@@ -31,6 +42,36 @@
       on that upload and keeps both answers, so you can measure how well the
       small one is doing.
     </p>
+    <!-- Inline SVG on purpose: the box is reachable over Tailscale with no
+         internet, so nothing may depend on an external asset. -->
+    <svg viewBox="0 0 700 150" class="w-full max-w-2xl mx-auto my-4" role="img"
+         aria-label="Field device captures and predicts, uploads to this server, which predicts again and stores both for comparison">
+      <rect x="4" y="30" width="180" height="80" rx="10" fill="#fff" stroke="#cbd5e1"/>
+      <text x="94" y="58" text-anchor="middle" font-size="14" font-weight="600" fill="#0f172a">Field device</text>
+      <text x="94" y="78" text-anchor="middle" font-size="11" fill="#64748b">photographs a sample</text>
+      <text x="94" y="94" text-anchor="middle" font-size="11" fill="#64748b">runs a small model</text>
+
+      <line x1="190" y1="70" x2="252" y2="70" stroke="#94a3b8" stroke-width="2" marker-end="url(#arr)"/>
+      <text x="221" y="60" text-anchor="middle" font-size="10" fill="#64748b">upload</text>
+
+      <rect x="258" y="20" width="184" height="100" rx="10" fill="#0f172a" stroke="#0f172a"/>
+      <text x="350" y="52" text-anchor="middle" font-size="14" font-weight="600" fill="#fff">This server</text>
+      <text x="350" y="72" text-anchor="middle" font-size="11" fill="#94a3b8">runs the heavy model</text>
+      <text x="350" y="90" text-anchor="middle" font-size="11" fill="#94a3b8">on the original image</text>
+      <circle cx="350" cy="104" r="3" fill="#10b981"/>
+
+      <line x1="448" y1="70" x2="510" y2="70" stroke="#94a3b8" stroke-width="2" marker-end="url(#arr)"/>
+
+      <rect x="516" y="30" width="180" height="80" rx="10" fill="#fff" stroke="#cbd5e1"/>
+      <text x="606" y="58" text-anchor="middle" font-size="14" font-weight="600" fill="#0f172a">Stored</text>
+      <text x="606" y="78" text-anchor="middle" font-size="11" fill="#64748b">both predictions kept</text>
+      <text x="606" y="94" text-anchor="middle" font-size="11" fill="#64748b">so you can compare</text>
+
+      <text x="350" y="140" text-anchor="middle" font-size="11" fill="#94a3b8">
+        the point: measure how well the small model agrees with the big one
+      </text>
+    </svg>
+
     <p class="text-sm text-slate-600">
       It is <b>model-agnostic</b>: class names, input size and preprocessing all
       come from inside the model file. Nothing about any particular model is
@@ -65,6 +106,42 @@
     </li>
     {% endfor %}
   </ol>
+
+  <!-- What step 2 actually looks like. Same markup as the real result panel,
+       so the page and the app match. Numbers here are illustrative. -->
+  <div class="mt-4">
+    <div class="text-xs font-medium text-slate-500 mb-2">WHAT A RESULT LOOKS LIKE</div>
+    <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
+      <div class="flex items-baseline justify-between mb-3">
+        <div>
+          <span class="text-xs text-slate-500">your-model:v1</span>
+          <span class="text-xs bg-slate-200 rounded px-1.5 py-0.5 ml-1">classification</span>
+        </div>
+        <span class="text-xs text-slate-400">86.3 ms · 1 image · torchscript</span>
+      </div>
+      <div class="mb-1">
+        <span class="text-2xl font-semibold">class-b</span>
+        <span class="text-sm text-slate-500 ml-2">61.0% confident</span>
+      </div>
+      <div class="space-y-1 mt-3">
+        {% for name, pct, top in [("class-b", 61, true), ("class-c", 27, false), ("class-a", 12, false)] %}
+        <div class="flex items-center gap-2 text-sm">
+          <span class="w-24 truncate {{ 'font-medium' if top }}">{{ name }}</span>
+          <div class="flex-1 h-2 rounded bg-slate-200 overflow-hidden">
+            <div class="h-full {{ 'bg-emerald-500' if top else 'bg-slate-400' }}" style="width: {{ pct }}%"></div>
+          </div>
+          <span class="w-14 text-right tabular-nums text-slate-600">0.{{ '%03d' % (pct * 10) }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      <p class="text-xs text-slate-400 mt-2">top-two margin: 0.340</p>
+    </div>
+    <p class="text-xs text-slate-500 mt-2">
+      Read the <b>whole distribution</b>, not just the top label. A 61/27 split
+      and a 98/1 split both show the same winner but mean very different things —
+      that's what the <b>margin</b> tells you.
+    </p>
+  </div>
 </section>
 
 <!-- ── Models ───────────────────────────────────────────────────── -->
@@ -88,6 +165,48 @@
         </tr>
       </tbody>
     </table>
+    <div class="grid sm:grid-cols-2 gap-4 mt-4">
+      <!-- Activate = routing -->
+      <div class="border border-slate-200 rounded-md p-3">
+        <div class="text-xs font-medium text-slate-500 mb-2">ACTIVATE — which model answers</div>
+        <svg viewBox="0 0 300 130" class="w-full" role="img"
+             aria-label="An incoming upload is routed to the activated model, not the others">
+          <rect x="2" y="48" width="76" height="34" rx="6" fill="#fff" stroke="#cbd5e1"/>
+          <text x="40" y="69" text-anchor="middle" font-size="10" fill="#334155">upload</text>
+          <line x1="82" y1="65" x2="118" y2="65" stroke="#94a3b8" stroke-width="2" marker-end="url(#arr)"/>
+
+          <rect x="124" y="6" width="172" height="30" rx="6" fill="#f8fafc" stroke="#e2e8f0"/>
+          <text x="210" y="25" text-anchor="middle" font-size="10" fill="#94a3b8">model v1 · idle</text>
+
+          <rect x="124" y="48" width="172" height="34" rx="6" fill="#ecfdf5" stroke="#10b981" stroke-width="2"/>
+          <text x="210" y="63" text-anchor="middle" font-size="10" font-weight="600" fill="#065f46">model v2 · ACTIVE</text>
+          <text x="210" y="76" text-anchor="middle" font-size="9" fill="#059669">answers new uploads</text>
+
+          <rect x="124" y="94" width="172" height="30" rx="6" fill="#f8fafc" stroke="#e2e8f0"/>
+          <text x="210" y="113" text-anchor="middle" font-size="10" fill="#94a3b8">model v3 · idle</text>
+        </svg>
+        <p class="text-xs text-slate-500 mt-1">One active model per task type.</p>
+      </div>
+
+      <!-- Load = memory -->
+      <div class="border border-slate-200 rounded-md p-3">
+        <div class="text-xs font-medium text-slate-500 mb-2">LOAD — what is in GPU memory</div>
+        <svg viewBox="0 0 300 130" class="w-full" role="img"
+             aria-label="Only one model fits in GPU memory; loading another evicts the first">
+          <rect x="60" y="8" width="180" height="74" rx="8" fill="#fff" stroke="#cbd5e1"/>
+          <text x="150" y="26" text-anchor="middle" font-size="10" fill="#64748b">GPU memory · 8 GB</text>
+          <rect x="76" y="36" width="148" height="34" rx="6" fill="#0f172a"/>
+          <text x="150" y="57" text-anchor="middle" font-size="10" font-weight="600" fill="#fff">one model resident</text>
+
+          <path d="M150,88 L150,104" stroke="#94a3b8" stroke-width="2" marker-end="url(#arr)"/>
+          <text x="150" y="122" text-anchor="middle" font-size="10" fill="#64748b">
+            loading another evicts this one
+          </text>
+        </svg>
+        <p class="text-xs text-slate-500 mt-1">Optional — saves the first-call delay.</p>
+      </div>
+    </div>
+
     <p class="text-xs text-slate-500 mt-3">
       You don't have to Load manually. The server loads on demand; this just
       avoids the one-off cold start.
@@ -165,6 +284,29 @@
   -F "task=classification" \
   -F "views=@front.png"  -F "lighting=both" \
   -F "views=@side.png"   -F "lighting=light_a"</code>
+    <svg viewBox="0 0 640 132" class="w-full max-w-xl mx-auto mt-4" role="img"
+         aria-label="One to three images of the same subject combine into a single sample and produce one prediction">
+      {% for i, y, label in [(0, 8, "front"), (1, 50, "light A"), (2, 92, "light B")] %}
+      <rect x="4" y="{{ y }}" width="104" height="32" rx="6" fill="#fff" stroke="#cbd5e1"/>
+      <text x="56" y="{{ y + 20 }}" text-anchor="middle" font-size="10" fill="#334155">{{ label }}</text>
+      <line x1="114" y1="{{ y + 16 }}" x2="176" y2="66" stroke="#cbd5e1" stroke-width="2"/>
+      {% endfor %}
+
+      <rect x="182" y="42" width="150" height="48" rx="8" fill="#f8fafc" stroke="#cbd5e1"/>
+      <text x="257" y="62" text-anchor="middle" font-size="11" font-weight="600" fill="#0f172a">one sample</text>
+      <text x="257" y="78" text-anchor="middle" font-size="10" fill="#64748b">1–3 images of it</text>
+
+      <line x1="338" y1="66" x2="398" y2="66" stroke="#94a3b8" stroke-width="2" marker-end="url(#arr)"/>
+
+      <rect x="404" y="42" width="150" height="48" rx="8" fill="#0f172a"/>
+      <text x="479" y="62" text-anchor="middle" font-size="11" font-weight="600" fill="#fff">one prediction</text>
+      <text x="479" y="78" text-anchor="middle" font-size="10" fill="#94a3b8">for the sample</text>
+
+      <text x="320" y="126" text-anchor="middle" font-size="10" fill="#94a3b8">
+        the model weighs the images together — fewer than three is fine
+      </text>
+    </svg>
+
     <p class="text-xs text-slate-500 mt-2">
       One <code>lighting</code> label per image, same order. 1–3 images; sending
       fewer is normal, not an error.
