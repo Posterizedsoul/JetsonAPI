@@ -1,38 +1,107 @@
 {% extends "base.html" %}
 {% block title %}How to{% endblock %}
 {% block body %}
-<h1 class="text-lg font-semibold mb-1">How to run this</h1>
-<p class="text-sm text-slate-500 mb-6">The short version of everything. Hover any label in the UI for a one-line hint.</p>
 
-{% macro card(title) %}
-<section class="bg-white rounded-lg border border-slate-200 p-4 mb-4">
-  <h2 class="text-sm font-semibold mb-2">{{ title }}</h2>
-  <div class="text-sm text-slate-600 space-y-2">{{ caller() }}</div>
+{% set code = "block bg-slate-900 text-slate-100 rounded-md px-3 py-2 text-xs font-mono overflow-x-auto whitespace-pre mt-2" %}
+{% set link = "text-blue-700 underline underline-offset-2" %}
+
+<h1 class="text-2xl font-semibold mb-1">How to use this server</h1>
+<p class="text-slate-500 mb-6">
+  Upload a model, point images at it, get predictions. Hover any label in the
+  app for a one-line explanation.
+</p>
+
+<!-- Jump links -->
+<nav class="flex flex-wrap gap-2 mb-8 text-sm">
+  {% for id, label in [
+      ("start", "Quick start"), ("models", "Models"), ("keys", "API keys"),
+      ("api", "For developers"), ("ops", "Running the server"),
+      ("trouble", "Troubleshooting")] %}
+  <a href="#{{ id }}" class="rounded-full bg-white border border-slate-200 px-3 py-1 hover:border-slate-400">{{ label }}</a>
+  {% endfor %}
+</nav>
+
+<!-- ── What this is ─────────────────────────────────────────────── -->
+<section class="mb-10">
+  <div class="bg-white rounded-lg border border-slate-200 p-5">
+    <h2 class="font-semibold mb-2">What this is</h2>
+    <p class="text-sm text-slate-600 mb-3">
+      A verification server. Devices in the field photograph a sample, run a
+      small model on the spot, and upload here. This machine runs the big model
+      on that upload and keeps both answers, so you can measure how well the
+      small one is doing.
+    </p>
+    <p class="text-sm text-slate-600">
+      It is <b>model-agnostic</b>: class names, input size and preprocessing all
+      come from inside the model file. Nothing about any particular model is
+      built into this server or these pages.
+    </p>
+  </div>
 </section>
-{% endmacro %}
 
-{% set code = "block bg-slate-900 text-slate-100 rounded px-3 py-2 text-xs font-mono overflow-x-auto whitespace-pre" %}
+<!-- ── Quick start ──────────────────────────────────────────────── -->
+<section id="start" class="mb-10">
+  <h2 class="text-lg font-semibold mb-1">Quick start</h2>
+  <p class="text-sm text-slate-500 mb-4">Three steps, about two minutes.</p>
 
-{% call card("What this is") %}
-<p>A verification server. Field devices photograph a board, run a small model,
-and upload here. This box runs the heavy model on the upload and stores both
-predictions so you can check how the small model is doing.</p>
-<p>It is <b>model-agnostic</b>: the class names, input size, and preprocessing
-all come from inside each model archive — nothing about a specific model is
-baked into this server or these pages.</p>
-{% endcall %}
+  <ol class="space-y-3">
+    {% for n, title, body in [
+      (1, "Upload a model",
+       'Go to <b>Models</b> → <b>Register an archive</b>. Choose your file, give it
+        an id and version, tick <b>Activate</b>, press Register.'),
+      (2, "Try it",
+       'Same page, <b>Try a model</b> panel at the top. Pick an image, press
+        <b>Predict</b>. You get the label, the full probability distribution, and
+        how long it took. Nothing is saved.'),
+      (3, "Check it is healthy",
+       'The <b>Dashboard</b> shows the active model and any recent errors.
+        <b>Performance</b> shows GPU, memory and inference latency.')] %}
+    <li class="bg-white rounded-lg border border-slate-200 p-4 flex gap-4">
+      <span class="shrink-0 h-7 w-7 rounded-full bg-slate-900 text-white grid place-items-center text-sm font-semibold">{{ n }}</span>
+      <div>
+        <div class="font-medium text-sm">{{ title }}</div>
+        <p class="text-sm text-slate-600 mt-0.5">{{ body | safe }}</p>
+      </div>
+    </li>
+    {% endfor %}
+  </ol>
+</section>
 
-{% call card("1 · Register a model") %}
-<p>Go to <a href="/ui/models" class="text-blue-700 underline">Models</a> →
-<b>Register an archive</b>. Upload a TorchScript <code>.ts.pt</code> or an ONNX
-<code>.onnx</code> file. Give it an id and version, tick <b>Activate</b> to make
-it the live model for its task.</p>
-<p class="text-slate-500">Task, classes, and preprocessing are read from metadata
-inside the file — nothing to configure.</p>
-<p><b>ONNX note:</b> <code>torch.onnx.export</code> embeds no metadata, so paste
-the manifest into the <b>Metadata JSON</b> field when registering. It's stored
-with the model. An embedded manifest, if the file has one, always wins.</p>
-<code class="{{ code }}">{
+<!-- ── Models ───────────────────────────────────────────────────── -->
+<section id="models" class="mb-10">
+  <h2 class="text-lg font-semibold mb-1">Models</h2>
+  <p class="text-sm text-slate-500 mb-4">
+    Two file types work: TorchScript <code>.ts.pt</code> and ONNX <code>.onnx</code>.
+  </p>
+
+  <div class="bg-white rounded-lg border border-slate-200 p-5 mb-4">
+    <h3 class="font-medium text-sm mb-2">Activate vs. Load — they're different</h3>
+    <table class="w-full text-sm">
+      <tbody class="divide-y">
+        <tr>
+          <td class="py-2 pr-4 font-medium w-24">Activate</td>
+          <td class="py-2 text-slate-600">Makes it the model new uploads are graded against. One per task type.</td>
+        </tr>
+        <tr>
+          <td class="py-2 pr-4 font-medium">Load</td>
+          <td class="py-2 text-slate-600">Pulls it into GPU memory now, so the first prediction isn't slow. Only one model fits at a time — loading another evicts it.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="text-xs text-slate-500 mt-3">
+      You don't have to Load manually. The server loads on demand; this just
+      avoids the one-off cold start.
+    </p>
+  </div>
+
+  <div class="bg-white rounded-lg border border-slate-200 p-5">
+    <h3 class="font-medium text-sm mb-2">ONNX files need their manifest</h3>
+    <p class="text-sm text-slate-600">
+      TorchScript exports carry their settings inside the file.
+      <code>torch.onnx.export</code> does not — so for a plain ONNX export, paste
+      this into the <b>Metadata JSON</b> box when registering:
+    </p>
+    <code class="{{ code }}">{
   "classes": ["a", "b", "c"],
   "task": "classification",
   "image_size": 224,
@@ -40,66 +109,129 @@ with the model. An embedded manifest, if the file has one, always wins.</p>
   "normalize_mean": [0.485, 0.456, 0.406],
   "normalize_std": [0.229, 0.224, 0.225]
 }</code>
-{% endcall %}
+    <p class="text-xs text-slate-500 mt-2">
+      <b>classes</b> must be in the same order your training used.
+      <b>image_size</b> and the normalize values must match your eval transform —
+      a mismatch won't error, it will just make every prediction wrong.
+    </p>
+  </div>
+</section>
 
-{% call card("2 · Load vs. Activate") %}
-<p><b>Activate</b> = the model new uploads are graded against (one per task).</p>
-<p><b>Load</b> = pull it into GPU memory now so the first prediction isn't slow.
-Only one model fits in memory at a time; loading another unloads the first.</p>
-{% endcall %}
+<!-- ── Keys ─────────────────────────────────────────────────────── -->
+<section id="keys" class="mb-10">
+  <h2 class="text-lg font-semibold mb-1">API keys</h2>
+  <p class="text-sm text-slate-500 mb-4">Every request needs one. Create them on the <a href="/ui/keys" class="{{ link }}">API keys</a> page.</p>
 
-{% call card("3 · Make an API key") %}
-<p>On <a href="/ui/keys" class="text-blue-700 underline">API keys</a>:</p>
-<ul class="list-disc ml-5 space-y-1">
-  <li><b>ingest</b> key — for a field device. Bound to a device id; its uploads
-      are attributed to that device. This is what goes in the phone/camera client.</li>
-  <li><b>admin</b> key — logs into this UI and manages models and keys.</li>
-</ul>
-<p class="text-amber-700">The key is shown once, right after you create it. Copy it then.</p>
-{% endcall %}
+  <div class="grid sm:grid-cols-2 gap-4">
+    <div class="bg-white rounded-lg border border-slate-200 p-4">
+      <div class="text-xs font-medium bg-slate-100 rounded px-2 py-0.5 inline-block mb-2">ingest</div>
+      <p class="text-sm text-slate-600">For a field device. Tied to one device id, so uploads are attributed to it and a misbehaving client can't claim to be another. Upload only.</p>
+    </div>
+    <div class="bg-white rounded-lg border border-slate-200 p-4">
+      <div class="text-xs font-medium bg-purple-100 text-purple-800 rounded px-2 py-0.5 inline-block mb-2">admin</div>
+      <p class="text-sm text-slate-600">Logs into this UI, manages models and keys. Give each person their own so you can revoke one without disturbing the others.</p>
+    </div>
+  </div>
+  <p class="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 mt-4">
+    A key is shown <b>once</b>, right after you create it. Copy it then — only a
+    hash is stored, so it can never be recovered, only replaced.
+  </p>
+</section>
 
-{% call card("3b · Just predict on an image (no storage)") %}
-<p>Fastest check that a model works: <a href="/ui/models" class="text-blue-700 underline">Models</a>
-→ <b>Try a model</b>, pick a file, hit Predict. Nothing is stored.</p>
-<p>Same thing over HTTP — returns the answer immediately:</p>
-<code class="{{ code }}">curl -X POST http://THIS-HOST:8000/v1/predict \
+<!-- ── API ──────────────────────────────────────────────────────── -->
+<section id="api" class="mb-10">
+  <h2 class="text-lg font-semibold mb-1">For client developers</h2>
+  <p class="text-sm text-slate-500 mb-4">
+    Full interactive reference at <a href="/docs" class="{{ link }}">/docs</a>.
+  </p>
+
+  <div class="bg-white rounded-lg border border-slate-200 p-5 mb-4">
+    <h3 class="font-medium text-sm">Just get a prediction</h3>
+    <p class="text-sm text-slate-600">Answer comes straight back. Nothing stored.</p>
+    <code class="{{ code }}">curl -X POST http://THIS-HOST:8000/v1/predict \
   -H "X-API-Key: YOUR_KEY" \
-  -F "images=@photo.jpg" \
-  -F "task=classification"</code>
-<p class="text-slate-500">Uses the active model for that task. Pass
-<code>model_version=</code> to target a specific one, <code>tta=true</code> for
-the slower, more accurate flip ensemble. Send several <code>images=</code> parts
-for a multi-view model.</p>
-{% endcall %}
+  -F "images=@photo.jpg"</code>
+  </div>
 
-{% call card("4 · Upload a board (what your client codes against)") %}
-<p>Multipart POST. 1–3 views, one lighting label each, optional edge prediction
-and metadata. Idempotent on board id + image bytes, so retries never duplicate.</p>
-<code class="{{ code }}">curl -X POST http://THIS-HOST:8000/v1/boards \
+  <div class="bg-white rounded-lg border border-slate-200 p-5">
+    <h3 class="font-medium text-sm">Upload a capture to keep</h3>
+    <p class="text-sm text-slate-600">
+      Stores the images, runs the active model in the background, records both
+      predictions. Safe to retry — re-sending the same capture never duplicates it.
+    </p>
+    <code class="{{ code }}">curl -X POST http://THIS-HOST:8000/v1/boards \
   -H "X-API-Key: YOUR_INGEST_KEY" \
-  -F "board_id=board-0001" \
+  -F "board_id=sample-0001" \
   -F "task=classification" \
-  -F "views=@both.png"    -F "lighting=both" \
-  -F "views=@light_a.png" -F "lighting=light_a" \
-  -F "views=@light_b.png" -F "lighting=light_b"</code>
-<p>Full contract with every field: <a href="/docs" class="text-blue-700 underline">API docs</a>.</p>
-{% endcall %}
+  -F "views=@front.png"  -F "lighting=both" \
+  -F "views=@side.png"   -F "lighting=light_a"</code>
+    <p class="text-xs text-slate-500 mt-2">
+      One <code>lighting</code> label per image, same order. 1–3 images; sending
+      fewer is normal, not an error.
+    </p>
+  </div>
+</section>
 
-{% call card("Running the server (on the Jetson)") %}
-<code class="{{ code }}">cd ~/JetsonAPI
+<!-- ── Ops ──────────────────────────────────────────────────────── -->
+<section id="ops" class="mb-10">
+  <h2 class="text-lg font-semibold mb-1">Running the server</h2>
+  <p class="text-sm text-slate-500 mb-4">On the Jetson itself.</p>
+  <div class="bg-white rounded-lg border border-slate-200 p-5">
+    <code class="{{ code }}">cd ~/Desktop/JetsonAPI
 git pull origin main
-sudo ./setup-jetson.sh deploy    # build, start, show access panel
-sudo ./setup-jetson.sh access    # reprint IPs, URLs, admin key, login QR</code>
-<p>Reach it remotely over Tailscale — both the Jetson and your device must be on
-the same tailnet. The access panel prints a QR: scan it to log in without typing.</p>
-{% endcall %}
+sudo ./setup-jetson.sh deploy    # rebuild and restart
+sudo ./setup-jetson.sh access    # print URLs, admin key, login QR</code>
+    <p class="text-sm text-slate-600 mt-3">
+      The stack restarts by itself after a reboot or power cut. To stop it on
+      purpose use <code>sudo systemctl stop jetsonapi</code>.
+    </p>
+    <p class="text-sm text-slate-600 mt-2">
+      Access is over Tailscale only — nothing is exposed to the internet. To let
+      someone else in, share the machine from the Tailscale admin console and
+      give them their own admin key.
+    </p>
+  </div>
+</section>
 
-{% call card("When something's off") %}
-<ul class="list-disc ml-5 space-y-1">
-  <li>Uploads work but no server prediction → no <b>active</b> model for that task.
-      Activate one under Models. Check <a href="/ui" class="text-blue-700 underline">Dashboard → Recent errors</a>.</li>
-  <li>Logs: <code>docker compose logs -f gateway</code></li>
-  <li>Health: <a href="/health" class="text-blue-700 underline">/health</a></li>
-</ul>
-{% endcall %}
+<!-- ── Troubleshooting ──────────────────────────────────────────── -->
+<section id="trouble" class="mb-6">
+  <h2 class="text-lg font-semibold mb-1">When something's wrong</h2>
+  <p class="text-sm text-slate-500 mb-4">Most common first.</p>
+
+  <div class="bg-white rounded-lg border border-slate-200 divide-y">
+    {% for problem, fix in [
+      ("The page shows 503 or won't load, but the server is up",
+       'Almost always a browser extension. Ad and privacy blockers often block
+        <code>100.x</code> addresses, which is the range Tailscale uses. Open an
+        incognito window to confirm, then whitelist the address in that extension.'),
+      ("Uploads work but no prediction appears",
+       'No <b>active</b> model for that task. Activate one on the Models page, then
+        check <a href="/ui" class="underline">Dashboard → Recent errors</a>.'),
+      ("A model will not register",
+       'The manifest is missing or malformed. For ONNX, paste it into the Metadata
+        JSON box — see the Models section above. The error message names the
+        specific problem.'),
+      ("Predictions are all the same class",
+       'The model, not the server. Check that the class order and normalization in
+        the manifest match what training used — a mismatch is silent.'),
+      ("Everything feels slow",
+       'Check <a href="/ui/perf" class="underline">Performance</a>. If a model was
+        just swapped, the first prediction includes the load. If ONNX shows
+        <code>CPUExecutionProvider</code>, it is not using the GPU.')] %}
+    <details class="group">
+      <summary class="px-4 py-3 text-sm font-medium cursor-pointer hover:bg-slate-50 flex justify-between items-center">
+        {{ problem }}
+        <span class="text-slate-400 group-open:rotate-180 transition-transform">▾</span>
+      </summary>
+      <p class="px-4 pb-3 text-sm text-slate-600">{{ fix | safe }}</p>
+    </details>
+    {% endfor %}
+  </div>
+
+  <p class="text-sm text-slate-500 mt-4">
+    Still stuck? <a href="/ui/logs" class="{{ link }}">Logs</a> shows what the
+    server is doing right now, and <a href="/health" class="{{ link }}">/health</a>
+    is the quickest yes/no on whether it is alive.
+  </p>
+</section>
 {% endblock %}

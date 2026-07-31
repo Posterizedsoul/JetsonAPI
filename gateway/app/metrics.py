@@ -7,17 +7,21 @@ come back empty and the page still renders.
 """
 
 import glob
+import os
 import time
 
 from app import config, db
 from app.runner import runner
 
 
-def _read_int(path: str) -> int | None:
+def _read_int(path) -> int | None:
+    # Catch broadly on purpose: this is a leaf helper poking at sysfs, where a
+    # node can be unreadable, empty, non-numeric, or hand back something with
+    # an odd encoding. No single reading is worth an exception.
     try:
         with open(path) as f:
             return int(f.read().strip())
-    except (OSError, ValueError):
+    except Exception:
         return None
 
 
@@ -99,7 +103,10 @@ def _find_gpu_load_path() -> str | None:
         "/sys/class/devfreq/*/device/load",
         "/sys/class/devfreq/*/load",
     ):
-        candidates.extend(glob.glob(pattern))
+        try:
+            candidates.extend(glob.glob(pattern))
+        except Exception:
+            continue
     for path in candidates:
         if _read_int(path) is not None:
             return path
@@ -123,20 +130,34 @@ def temperatures() -> list[dict]:
     /sys/class/thermal holds symlinks; if those don't resolve inside the
     container, the real directories under /sys/devices/virtual/thermal do.
     """
-    zones = sorted(glob.glob("/sys/class/thermal/thermal_zone*"))
-    if not zones:
-        zones = sorted(glob.glob("/sys/devices/virtual/thermal/thermal_zone*"))
-    out = []
-    for zone in zones:
-        milli = _read_int(f"{zone}/temp")
+    out: list[dict] = []
+    for base in ("/sys/class/thermal", "/sys/devices/virtual/thermal"):
         try:
-            with open(f"{zone}/type") as f:
-                name = f.read().strip()
-        except OSError:
-            name = zone.rsplit("/", 1)[-1]
-        # Jetson reports millidegrees; ignore the -256000 "disabled" sentinels.
-        if milli is not None and milli > 0:
-            out.append({"name": name, "c": round(milli / 1000, 1)})
+            entries = sorted(os.listdir(base))
+        except Exception:
+            continue
+        for entry in entries:
+            if not entry.startswith("thermal_zone"):
+                continue
+            # Guard each zone separately: one unreadable node must not cost
+            # the whole list.
+            try:
+                zone = os.path.join(base, entry)
+                milli = _read_int(os.path.join(zone, "temp"))
+                # Jetson reports millidegrees and uses -256000 for a disabled
+                # sensor, so anything <= 0 is not a real reading.
+                if milli is None or milli <= 0:
+                    continue
+                try:
+                    with open(os.path.join(zone, "type")) as f:
+                        label = f.read().strip() or entry
+                except Exception:
+                    label = entry
+                out.append({"name": label, "c": round(milli / 1000, 1)})
+            except Exception:
+                continue
+        if out:
+            break
     return out
 
 
